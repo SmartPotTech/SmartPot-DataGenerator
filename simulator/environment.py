@@ -1,6 +1,6 @@
 """Modelo físico simplificado de una maceta hidropónica.
 
-Cada variable se acerca a un objetivo que depende de la hora del día y de los actuadores
+Cada variable se acerca a un objetivo que depende de la hora local y de los actuadores
 encendidos, con ruido gaussiano. Los valores quedan siempre dentro de la escala de los
 sensores de la maceta.
 """
@@ -40,6 +40,7 @@ def clamp(name: str, value: float) -> float:
 class Environment:
     crop_type: str
     seed: int | None = None
+    utc_offset_hours: float = 0.0
     state: dict[str, float] = field(default_factory=dict)
     active: dict[str, tuple[float, float]] = field(default_factory=dict)
 
@@ -77,7 +78,7 @@ class Environment:
         return f"{actuator} encendido {seconds} s"
 
     def step(self, seconds: float, now: float) -> None:
-        hour = (now / 3600.0) % 24
+        hour = (now / 3600.0 + self.utc_offset_hours) % 24
         daylight = math.sin((hour - 6) / 12 * math.pi)
         minutes = seconds / 60.0
         start = now - seconds

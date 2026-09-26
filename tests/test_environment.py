@@ -60,3 +60,11 @@ def test_ph_doser_lowers_ph_and_deactivate_stops_actuators():
 def test_unknown_actuators_are_rejected():
     with pytest.raises(ValueError, match="no existe"):
         Environment("LETTUCE").apply("HEATER", "ACTIVATE", 10, NOON)
+
+
+def test_daylight_follows_the_local_time_zone():
+    local, utc = Environment("TOMATO", seed=1, utc_offset_hours=-5), Environment("TOMATO", seed=1)
+    five_pm_utc = 17 * 3600.0
+    advance(local, 120, start=five_pm_utc)
+    advance(utc, 120, start=five_pm_utc)
+    assert local.state["brightness"] > utc.state["brightness"] + 300
