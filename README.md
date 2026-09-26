@@ -41,6 +41,7 @@ SmartPot-DataGenerator/
 | `MQTT_TOPIC_PREFIX` | `smartpot/v1` | Prefijo del contrato |
 | `SIMULATOR_DEVICES` | — | `cropId:clave:TIPO` separados por comas |
 | `SIMULATOR_INTERVAL_SECONDS` | `30` | Segundos entre lecturas |
+| `SIMULATOR_UTC_OFFSET` | `-5` | Diferencia horaria con UTC para el ciclo de día y noche |
 
 El usuario MQTT de cada maceta es el id de su cultivo y la clave es la que entrega la API al crear el cultivo (`POST /api/v1/crops`) o al rotarla (`POST /api/v1/crops/{id}/device/key`). Los datos demo de SmartPot-DB traen dos macetas listas para simular.
 
