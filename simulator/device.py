@@ -17,7 +17,7 @@ class SimulatedDevice:
     def __init__(self, device: DeviceConfig, settings: Settings, client: mqtt.Client | None = None):
         self.device = device
         self.settings = settings
-        self.environment = Environment(device.crop_type)
+        self.environment = Environment(device.crop_type, utc_offset_hours=settings.utc_offset_hours)
         base = f"{settings.topic_prefix}/{device.crop_id}"
         self.topics = {
             "telemetry": f"{base}/telemetry",

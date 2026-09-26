@@ -20,6 +20,7 @@ class Settings:
     topic_prefix: str
     interval_seconds: float
     devices: tuple[DeviceConfig, ...]
+    utc_offset_hours: float = -5.0
 
 
 def parse_devices(raw: str) -> tuple[DeviceConfig, ...]:
@@ -46,4 +47,5 @@ def load() -> Settings:
         topic_prefix=env.get("MQTT_TOPIC_PREFIX", "smartpot/v1"),
         interval_seconds=float(env.get("SIMULATOR_INTERVAL_SECONDS", "30")),
         devices=parse_devices(env.get("SIMULATOR_DEVICES", "")),
+        utc_offset_hours=float(env.get("SIMULATOR_UTC_OFFSET", "-5")),
     )
