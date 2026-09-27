@@ -1,4 +1,4 @@
-FROM python:3.13-slim-bookworm AS build
+FROM python:3.14-slim-bookworm AS build
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.12 /uv /bin/uv
 
@@ -13,7 +13,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY simulator ./simulator
 
-FROM python:3.13-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 LABEL org.opencontainers.image.title="SmartPot DataGenerator" \
       org.opencontainers.image.description="Macetas virtuales de SmartPot por MQTT: automáticas, manuales o con el clima real" \
