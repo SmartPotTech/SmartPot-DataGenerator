@@ -1,4 +1,4 @@
-"""API interna de control de las macetas virtuales. Solo la consume SmartPot-API, con un token compartido;
+"""API interna de control de los cultivos virtuales. Solo la consume SmartPot-API, con un token compartido;
 nunca se publica en Internet. /health es pública para el chequeo del contenedor."""
 
 import secrets
@@ -48,7 +48,7 @@ class PotRequest(CamelModel):
 
 def create_app(manager: PotManager, token: str | None) -> FastAPI:
     app = FastAPI(title="SmartPot Simulator", version="2.0.0", docs_url=None, redoc_url=None, openapi_url=None,
-                  description="Macetas virtuales que hablan MQTT v1 como una maceta real.")
+                  description="Cultivos virtuales que hablan MQTT v1 como un dispositivo real.")
 
     def require_token(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
         if token is None:
@@ -73,14 +73,14 @@ def create_app(manager: PotManager, token: str | None) -> FastAPI:
     def get_pot(crop_id: str) -> dict:
         pot = manager.get(crop_id)
         if pot is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "La maceta virtual no existe")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "El cultivo virtual no existe")
         return manager.snapshot(pot)
 
     @app.put("/v1/pots/{crop_id}", dependencies=guarded)
     def put_pot(crop_id: str, payload: PotRequest) -> dict:
         existing = manager.get(crop_id)
         if existing is not None and not existing.config.managed:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Esa maceta está definida en SIMULATOR_DEVICES")
+            raise HTTPException(status.HTTP_409_CONFLICT, "Ese cultivo está definido en SIMULATOR_DEVICES")
         location = None if payload.location is None else Location(**payload.location.model_dump())
         config = PotConfig(crop_id=crop_id, key=payload.key, crop_type=payload.crop_type, mode=payload.mode,
                            manual=payload.manual.as_dict() if payload.manual else {}, location=location,
@@ -94,7 +94,7 @@ def create_app(manager: PotManager, token: str | None) -> FastAPI:
     def delete_pot(crop_id: str) -> Response:
         pot = manager.get(crop_id)
         if pot is not None and not pot.config.managed:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Esa maceta está definida en SIMULATOR_DEVICES")
+            raise HTTPException(status.HTTP_409_CONFLICT, "Ese cultivo está definido en SIMULATOR_DEVICES")
         manager.remove(crop_id)
         return Response(status_code=204)
 
