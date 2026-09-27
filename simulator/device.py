@@ -27,6 +27,9 @@ class SimulatedDevice:
         }
         self.client = client or self._build_client()
         self.last_step = time.time()
+        self.last_reading: dict[str, float] | None = None
+        self.last_published_at: float | None = None
+        self.last_command: dict | None = None
 
     def _build_client(self) -> mqtt.Client:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"smartpot-sim-{self.device.crop_id}",
@@ -75,14 +78,23 @@ class SimulatedDevice:
                                              str(command.get("action", "")).upper(),
                                              command.get("durationSeconds"), now)
             log.info("Maceta %s ejecutó %s", self.device.crop_id, message)
-            return {"id": command_id, "status": "EXECUTED", "message": message}
+            ack = {"id": command_id, "status": "EXECUTED", "message": message}
         except ValueError as error:
-            return {"id": command_id, "status": "FAILED", "message": str(error)}
+            ack = {"id": command_id, "status": "FAILED", "message": str(error)}
+        self.last_command = {**ack, "at": now}
+        return ack
+
+    @property
+    def connected(self) -> bool:
+        return self.client.is_connected()
 
     def publish_reading(self, now: float) -> dict[str, float]:
-        self.environment.step(now - self.last_step, now)
+        # Tras una pausa larga la física avanza como máximo 15 minutos de golpe.
+        self.environment.step(min(now - self.last_step, 900.0), now)
         self.last_step = now
         reading = self.environment.reading()
         if self.client.is_connected():
             self.client.publish(self.topics["telemetry"], json.dumps(reading), qos=0)
+            self.last_published_at = now
+        self.last_reading = reading
         return reading
