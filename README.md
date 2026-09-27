@@ -135,11 +135,11 @@ Cada cambio en `main` pasa por el CI, publica la imagen en GHCR (y en Docker Hub
 
 ## Documentación
 
-El simulador corre siempre junto a la plataforma y solo la API le habla. La [documentación técnica](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Technical_Documentation.md) explica las macetas virtuales, sus modos y cómo las administra la API. Los superdiagramas muestran la plataforma completa en una sola imagen ampliable:
+El simulador corre siempre junto a la plataforma y solo la API le habla. La [documentación técnica](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Technical_Documentation.md) explica las macetas virtuales, sus modos y cómo las administra la API. Los diagramas generales muestran la plataforma completa en una sola imagen ampliable:
 
-- [Operación completa](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_02_Operation_Sequence.svg): la escena de la maceta virtual con clima real y la de rotar la clave
-- [Máquinas de estado](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_05_State_Machines.svg): los estados de una maceta virtual
-- [Arquitectura completa](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_01_Architecture.svg): dónde corre el simulador y con quién habla
+- [Operación completa](https://github.com/SmartPotTech/.github/blob/main/docs/diagrams/SmartPot_Global_02_Operation_Sequence.svg): la escena de la maceta virtual con clima real y la de rotar la clave
+- [Máquinas de estado](https://github.com/SmartPotTech/.github/blob/main/docs/diagrams/SmartPot_Global_05_State_Machines.svg): los estados de una maceta virtual
+- [Arquitectura completa](https://github.com/SmartPotTech/.github/blob/main/docs/diagrams/SmartPot_Global_01_Architecture.svg): dónde corre el simulador y con quién habla
 
 ## Licencia
 
