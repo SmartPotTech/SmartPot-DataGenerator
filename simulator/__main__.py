@@ -1,7 +1,7 @@
 """Punto de entrada: python -m simulator.
 
-Arranca las macetas fijas de SIMULATOR_DEVICES y la API interna de control (con SIMULATOR_TOKEN la API
-puede crear macetas virtuales para cualquier cultivo).
+Arranca los cultivos fijos de SIMULATOR_DEVICES y la API interna de control (con SIMULATOR_TOKEN la API
+puede simular cualquier cultivo virtual).
 """
 
 import logging
@@ -21,7 +21,7 @@ def main() -> None:
     manager = PotManager(settings)
     manager.load_static()
     manager.start()
-    logging.info("Simulador iniciado con %d macetas fijas; API de control %s", len(settings.devices),
+    logging.info("Simulador iniciado con %d cultivos fijos; API de control %s", len(settings.devices),
                  "activa" if settings.api_token else "deshabilitada (falta SIMULATOR_TOKEN)")
     try:
         uvicorn.run(create_app(manager, settings.api_token), host="0.0.0.0", port=settings.api_port,
