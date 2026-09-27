@@ -161,7 +161,8 @@ def test_places_search_and_weather_preview(client, auth):
     places = client.get("/v1/places", params={"q": "Medellín"}, headers=auth).json()
     assert places[0]["region"] == "Antioquia"
     weather = client.get("/v1/weather", params={"latitude": 6.24, "longitude": -75.57}, headers=auth).json()
-    assert weather["isDay"] if "isDay" in weather else weather["is_day"]
+    assert weather["isDay"] is True
+    assert weather["cloudCover"] == 5
 
 
 def test_without_token_the_control_api_is_disabled(manager):

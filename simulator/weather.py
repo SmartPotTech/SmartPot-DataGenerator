@@ -74,9 +74,15 @@ class Weather:
     fetched_at: float
 
     def as_dict(self) -> dict:
+        """En camelCase, como el resto del estado de la maceta."""
         data = asdict(self)
         data.pop("fetched_at")
-        return data
+        return {_camel(name): value for name, value in data.items()}
+
+
+def _camel(name: str) -> str:
+    first, *rest = name.split("_")
+    return first + "".join(part.capitalize() for part in rest)
 
 
 def _http_json(url: str) -> dict:
