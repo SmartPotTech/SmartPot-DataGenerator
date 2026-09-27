@@ -1,11 +1,11 @@
-"""Modelo físico simplificado de una maceta hidropónica.
+"""Modelo físico simplificado de un cultivo hidropónico.
 
 Cada variable se acerca a un objetivo que depende del modo y de los actuadores encendidos, con ruido
-gaussiano. Los valores quedan siempre dentro de la escala de los sensores de la maceta.
+gaussiano. Los valores quedan siempre dentro de la escala de los sensores del dispositivo.
 
 - AUTO: ciclo de día y noche alrededor de la línea base de la especie.
 - MANUAL: los objetivos son los medidores que mueve la persona.
-- WEATHER: la maceta está al aire libre y sigue el clima real del lugar (temperatura, humedad, sol,
+- WEATHER: el cultivo está al aire libre y sigue el clima real del lugar (temperatura, humedad, sol,
   lluvia y presión).
 """
 
@@ -105,7 +105,7 @@ class Environment:
     def apply(self, actuator: str, action: str, duration: int | None, now: float) -> str:
         """Aplica un comando y devuelve el mensaje del ACK."""
         if actuator not in SUPPORTED_ACTUATORS:
-            raise ValueError(f"El actuador {actuator} no existe en esta maceta")
+            raise ValueError(f"El actuador {actuator} no existe en este cultivo")
         if action == "DEACTIVATE":
             self.active.pop(actuator, None)
             name, ending = ACTUATOR_NAMES[actuator]

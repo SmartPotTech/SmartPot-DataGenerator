@@ -1,4 +1,4 @@
-"""Maceta simulada que habla el contrato MQTT v1 de SmartPot."""
+"""Dispositivo simulado que habla el contrato MQTT v1 de SmartPot."""
 
 import json
 import logging
@@ -55,11 +55,11 @@ class SimulatedDevice:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code.is_failure:
-            log.warning("Maceta %s rechazada por el broker: %s", self.device.crop_id, reason_code)
+            log.warning("Cultivo %s rechazado por el broker: %s", self.device.crop_id, reason_code)
             return
         client.publish(self.topics["status"], "online", qos=1, retain=True)
         client.subscribe(self.topics["commands"], qos=1)
-        log.info("Maceta %s (%s) conectada", self.device.crop_id, self.device.crop_type)
+        log.info("Cultivo %s (%s) conectado", self.device.crop_id, self.device.crop_type)
 
     def _on_message(self, client, userdata, message) -> None:
         ack = self.handle_command(message.payload.decode("utf-8", errors="replace"), time.time())
@@ -77,7 +77,7 @@ class SimulatedDevice:
             message = self.environment.apply(str(command.get("actuator", "")).upper(),
                                              str(command.get("action", "")).upper(),
                                              command.get("durationSeconds"), now)
-            log.info("Maceta %s ejecutó %s", self.device.crop_id, message)
+            log.info("Cultivo %s ejecutó %s", self.device.crop_id, message)
             ack = {"id": command_id, "status": "EXECUTED", "message": message}
         except ValueError as error:
             ack = {"id": command_id, "status": "FAILED", "message": str(error)}
