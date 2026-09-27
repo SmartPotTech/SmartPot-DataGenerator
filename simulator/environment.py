@@ -1,13 +1,19 @@
 """Modelo físico simplificado de una maceta hidropónica.
 
-Cada variable se acerca a un objetivo que depende de la hora local y de los actuadores
-encendidos, con ruido gaussiano. Los valores quedan siempre dentro de la escala de los
-sensores de la maceta.
+Cada variable se acerca a un objetivo que depende del modo y de los actuadores encendidos, con ruido
+gaussiano. Los valores quedan siempre dentro de la escala de los sensores de la maceta.
+
+- AUTO: ciclo de día y noche alrededor de la línea base de la especie.
+- MANUAL: los objetivos son los medidores que mueve la persona.
+- WEATHER: la maceta está al aire libre y sigue el clima real del lugar (temperatura, humedad, sol,
+  lluvia y presión).
 """
 
 import math
 import random
 from dataclasses import dataclass, field
+
+from simulator.weather import Weather
 
 BASELINES = {
     "LETTUCE": {"temperature": 19, "humidity": 62, "brightness": 850, "ph": 6.0, "tds": 700, "soilMoisture": 70},
@@ -25,8 +31,11 @@ LIMITS = {
     "ph": (0.0, 14.0),
     "tds": (0.0, 3000.0),
     "soilMoisture": (0.0, 100.0),
-    "atmosphere": (950.0, 1050.0),
+    "atmosphere": (300.0, 1100.0),
 }
+MODES = ("AUTO", "MANUAL", "WEATHER")
+# Luz del sensor (0 a 2000) por cada W/m² de radiación solar.
+LIGHT_PER_WATT = 2.2
 
 # Nombre en español y terminación para concordar el mensaje de confirmación.
 ACTUATOR_NAMES = {
@@ -52,12 +61,34 @@ class Environment:
     utc_offset_hours: float = 0.0
     state: dict[str, float] = field(default_factory=dict)
     active: dict[str, tuple[float, float]] = field(default_factory=dict)
+    mode: str = "AUTO"
+    manual: dict[str, float] = field(default_factory=dict)
+    weather: Weather | None = None
 
     def __post_init__(self) -> None:
         self.random = random.Random(self.seed)
         self.base = BASELINES.get(self.crop_type.upper(), BASELINES["LETTUCE"])
         if not self.state:
             self.state = {**self.base, "atmosphere": 1012.0}
+        if not self.manual:
+            self.manual = dict(self.state)
+
+    def set_mode(self, mode: str) -> None:
+        if mode not in MODES:
+            raise ValueError(f"Modo desconocido: {mode}")
+        self.mode = mode
+
+    def set_manual(self, values: dict[str, float | None]) -> None:
+        """Mueve los medidores: el valor cambia de inmediato y luego evoluciona con la física y los actuadores."""
+        for name, value in values.items():
+            if value is None or name not in LIMITS:
+                continue
+            self.manual[name] = clamp(name, float(value))
+            self.state[name] = self.manual[name]
+
+    def active_actuators(self, now: float) -> dict[str, float]:
+        """Actuadores encendidos y el momento (epoch) en que se apagan."""
+        return {name: window[1] for name, window in self.active.items() if window[0] <= now < window[1]}
 
     def is_active(self, actuator: str, now: float) -> bool:
         window = self.active.get(actuator)
@@ -89,30 +120,46 @@ class Environment:
         return f"{name} encendid{ending} por {seconds} s"
 
     def step(self, seconds: float, now: float) -> None:
-        hour = (now / 3600.0 + self.utc_offset_hours) % 24
-        daylight = math.sin((hour - 6) / 12 * math.pi)
         minutes = seconds / 60.0
         start = now - seconds
-        base = self.base
         fan = self.active_fraction("FAN", start, now)
         humidifier = self.active_fraction("HUMIDIFIER", start, now)
         uv_light = self.active_fraction("UV_LIGHT", start, now)
         pump_seconds = self.active_fraction("WATER_PUMP", start, now) * seconds
 
-        target_temperature = base["temperature"] + 3 * daylight - 2.0 * fan
-        target_humidity = base["humidity"] - 6 * daylight - 6.0 * fan + 12.0 * humidifier
-        target_light = base["brightness"] * max(0.05, daylight + 0.3) + 700 * uv_light
+        temperature, humidity, light, pressure, drying, rain = self._targets(now)
+        self._relax("temperature", temperature - 2.0 * fan, 0.08 * minutes)
+        self._relax("humidity", humidity - 6.0 * fan + 12.0 * humidifier, 0.1 * minutes)
+        self._relax("brightness", light + 700 * uv_light, 0.5 * minutes)
+        self._relax("atmosphere", pressure, 0.05 * minutes)
 
-        self._relax("temperature", target_temperature, 0.08 * minutes)
-        self._relax("humidity", target_humidity, 0.1 * minutes)
-        self._relax("brightness", target_light, 0.5 * minutes)
-        self._relax("atmosphere", 1012.0, 0.05 * minutes)
-
-        evaporation = 0.03 * minutes * max(0.5, self.state["temperature"] / 20)
-        irrigation = 1.2 * pump_seconds
+        evaporation = 0.03 * minutes * max(0.5, self.state["temperature"] / 20) * drying
+        irrigation = 1.2 * pump_seconds + rain * minutes
         self.state["soilMoisture"] = clamp("soilMoisture", self.state["soilMoisture"] - evaporation + irrigation)
-        self.state["ph"] = clamp("ph", self.state["ph"] + 0.002 * minutes)
-        self.state["tds"] = clamp("tds", self.state["tds"] - 0.4 * minutes)
+        if self.mode == "MANUAL":
+            self._relax("ph", self.manual["ph"], 0.02 * minutes)
+            self._relax("tds", self.manual["tds"], 0.02 * minutes)
+        else:
+            self.state["ph"] = clamp("ph", self.state["ph"] + 0.002 * minutes)
+            self.state["tds"] = clamp("tds", self.state["tds"] - 0.4 * minutes)
+
+    def _targets(self, now: float) -> tuple[float, float, float, float, float, float]:
+        """Temperatura, humedad, luz y presión objetivo; factor de secado y lluvia (% de sustrato por minuto)."""
+        if self.mode == "MANUAL":
+            m = self.manual
+            return m["temperature"], m["humidity"], m["brightness"], m["atmosphere"], 1.0, 0.0
+        if self.mode == "WEATHER" and self.weather is not None:
+            w = self.weather
+            light = min(LIMITS["brightness"][1], w.radiation * LIGHT_PER_WATT)
+            # Sol y aire seco secan más rápido; la lluvia moja el sustrato (unos 0,8 % por mm y hora).
+            drying = (1 + w.radiation / 600) * max(0.3, 1.3 - w.humidity / 100)
+            rain = w.precipitation * 0.8 / 60
+            return w.temperature, w.humidity, light, w.pressure, drying, rain
+        hour = (now / 3600.0 + self.utc_offset_hours) % 24
+        daylight = math.sin((hour - 6) / 12 * math.pi)
+        base = self.base
+        return (base["temperature"] + 3 * daylight, base["humidity"] - 6 * daylight,
+                base["brightness"] * max(0.05, daylight + 0.3), 1012.0, 1.0, 0.0)
 
     def _relax(self, name: str, target: float, rate: float) -> None:
         current = self.state[name]
