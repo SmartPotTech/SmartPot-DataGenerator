@@ -131,6 +131,16 @@ docker pull ghcr.io/smartpottech/smartpot-datagenerator:latest
 
 La imagen corre como el usuario `1000`, admite sistema de archivos de solo lectura y trae chequeo de salud. Necesita salida a Internet solo para el modo clima.
 
+Cada cambio en `main` pasa por el CI, publica la imagen en GHCR (y en Docker Hub como réplica cuando el repositorio tiene credenciales) y pide el despliegue al workflow central de [SmartPotTech/.github](https://github.com/SmartPotTech/.github), que actualiza producción de a uno y verifica `/health`.
+
+## Documentación
+
+El simulador corre siempre junto a la plataforma y solo la API le habla. La [documentación técnica](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Technical_Documentation.md) explica las macetas virtuales, sus modos y cómo las administra la API. Los superdiagramas muestran la plataforma completa en una sola imagen ampliable:
+
+- [Operación completa](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_02_Operation_Sequence.svg): la escena de la maceta virtual con clima real y la de rotar la clave
+- [Máquinas de estado](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_05_State_Machines.svg): los estados de una maceta virtual
+- [Arquitectura completa](https://github.com/SmartPotTech/.github/blob/main/docs/images/superdiagrams/SmartPot_Super_01_Architecture.svg): dónde corre el simulador y con quién habla
+
 ## Licencia
 
 Este proyecto está bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
