@@ -28,7 +28,16 @@ LIMITS = {
     "atmosphere": (950.0, 1050.0),
 }
 
-SUPPORTED_ACTUATORS = {"WATER_PUMP", "UV_LIGHT", "FAN", "HUMIDIFIER", "NUTRIENT_DOSER", "PH_DOSER"}
+# Nombre en español y terminación para concordar el mensaje de confirmación.
+ACTUATOR_NAMES = {
+    "WATER_PUMP": ("Bomba de agua", "a"),
+    "UV_LIGHT": ("Luz de cultivo", "a"),
+    "FAN": ("Ventilador", "o"),
+    "HUMIDIFIER": ("Humidificador", "o"),
+    "NUTRIENT_DOSER": ("Dosificador de nutrientes", "o"),
+    "PH_DOSER": ("Dosificador de pH", "o"),
+}
+SUPPORTED_ACTUATORS = set(ACTUATOR_NAMES)
 
 
 def clamp(name: str, value: float) -> float:
@@ -68,14 +77,16 @@ class Environment:
             raise ValueError(f"El actuador {actuator} no existe en esta maceta")
         if action == "DEACTIVATE":
             self.active.pop(actuator, None)
-            return f"{actuator} apagado"
+            name, ending = ACTUATOR_NAMES[actuator]
+            return f"{name} apagad{ending}"
         seconds = duration if duration else 3600
         self.active[actuator] = (now, now + seconds)
         if actuator == "PH_DOSER":
             self.state["ph"] = clamp("ph", self.state["ph"] - 0.12 * seconds)
         elif actuator == "NUTRIENT_DOSER":
             self.state["tds"] = clamp("tds", self.state["tds"] + 70 * seconds)
-        return f"{actuator} encendido {seconds} s"
+        name, ending = ACTUATOR_NAMES[actuator]
+        return f"{name} encendid{ending} por {seconds} s"
 
     def step(self, seconds: float, now: float) -> None:
         hour = (now / 3600.0 + self.utc_offset_hours) % 24

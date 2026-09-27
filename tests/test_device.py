@@ -30,7 +30,7 @@ def test_topics_follow_the_v1_contract():
 def test_commands_are_acknowledged_as_executed():
     ack = device().handle_command(json.dumps({"id": "c1", "actuator": "WATER_PUMP", "action": "ACTIVATE",
                                               "durationSeconds": 15}), now=0)
-    assert ack == {"id": "c1", "status": "EXECUTED", "message": "WATER_PUMP encendido 15 s"}
+    assert ack == {"id": "c1", "status": "EXECUTED", "message": "Bomba de agua encendida por 15 s"}
 
 
 def test_unsupported_actuators_fail_with_a_reason():
