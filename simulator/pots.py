@@ -1,6 +1,6 @@
-"""Macetas virtuales que se crean, cambian y retiran en caliente.
+"""Cultivos virtuales que se crean, cambian y retiran en caliente.
 
-Las macetas de `SIMULATOR_DEVICES` (datos demo y pruebas) son fijas; las que pide la API para un cultivo
+Los cultivos de `SIMULATOR_DEVICES` (datos demo y pruebas) son fijas; las que pide la API para un cultivo
 son administradas: la API las vuelve a crear si el simulador se reinicia. Un solo hilo publica todas las
 lecturas y refresca el clima de las que están en modo WEATHER.
 """
@@ -89,7 +89,7 @@ class PotManager:
                 pot = VirtualPot(config=config, device=device)
                 self.pots[config.crop_id] = pot
                 previous = None
-                log.info("Maceta virtual %s (%s) en modo %s", config.crop_id, config.crop_type, config.mode)
+                log.info("Cultivo virtual %s (%s) en modo %s", config.crop_id, config.crop_type, config.mode)
             pot.config = config
             environment = pot.device.environment
             environment.set_mode(config.mode)
@@ -110,7 +110,7 @@ class PotManager:
         if pot is None:
             return False
         pot.device.stop()
-        log.info("Maceta virtual %s retirada", crop_id)
+        log.info("Cultivo virtual %s retirado", crop_id)
         return True
 
     def get(self, crop_id: str) -> VirtualPot | None:
@@ -130,8 +130,8 @@ class PotManager:
                 self._refresh_weather(pot)
             try:
                 pot.device.publish_reading(now)
-            except Exception:  # noqa: BLE001 - una maceta con problemas no detiene a las demás
-                log.exception("La maceta %s no pudo publicar", pot.config.crop_id)
+            except Exception:  # noqa: BLE001 - un cultivo con problemas no detiene a los demás
+                log.exception("El cultivo %s no pudo publicar", pot.config.crop_id)
 
     def _refresh_weather(self, pot: VirtualPot, force: bool = False) -> None:
         location = pot.config.location
@@ -150,7 +150,7 @@ class PotManager:
 
     def start(self) -> None:
         if self._thread is None:
-            self._thread = threading.Thread(target=self._run, name="macetas", daemon=True)
+            self._thread = threading.Thread(target=self._run, name="cultivos", daemon=True)
             self._thread.start()
 
     def _run(self) -> None:

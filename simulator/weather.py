@@ -1,6 +1,6 @@
 """Clima actual de un lugar con Open-Meteo: servicio abierto, sin clave y sin registro.
 
-La maceta virtual en modo clima copia la temperatura, la humedad, la luz (radiación solar), la lluvia y la
+El cultivo virtual en modo clima copia la temperatura, la humedad, la luz (radiación solar), la lluvia y la
 presión del lugar, y la PWA usa la condición (despejado, nublado, lluvia…) para ilustrar la escena.
 """
 
@@ -74,7 +74,7 @@ class Weather:
     fetched_at: float
 
     def as_dict(self) -> dict:
-        """En camelCase, como el resto del estado de la maceta."""
+        """En camelCase, como el resto del estado del cultivo."""
         data = asdict(self)
         data.pop("fetched_at")
         return {_camel(name): value for name, value in data.items()}
