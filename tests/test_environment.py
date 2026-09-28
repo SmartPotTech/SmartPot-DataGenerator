@@ -1,6 +1,7 @@
 import pytest
 
 from simulator.environment import LIMITS, Environment
+from simulator.weather import Weather
 
 NOON = 12 * 3600.0
 MIDNIGHT = 24 * 3600.0
@@ -68,3 +69,63 @@ def test_daylight_follows_the_local_time_zone():
     advance(local, 120, start=five_pm_utc)
     advance(utc, 120, start=five_pm_utc)
     assert local.state["brightness"] > utc.state["brightness"] + 300
+
+
+@pytest.mark.parametrize("mode", ["AUTO", "MANUAL", "WEATHER"])
+def test_every_mode_feels_the_fan_and_the_humidifier(mode):
+    def run(actuator: str | None) -> Environment:
+        env = Environment("TOMATO", seed=1)
+        env.set_mode(mode)
+        if mode == "WEATHER":
+            env.weather = Weather(24, 60, 20, 500, 0, 850, 5, True, 1, "MOSTLY_CLEAR", "Mayormente despejado",
+                                  "", 0)
+        advance(env, 30)
+        if actuator:
+            env.apply(actuator, "ACTIVATE", 600, NOON + 1800)
+        advance(env, 10, start=NOON + 1800)
+        return env
+
+    still, fan, humidifier = run(None), run("FAN"), run("HUMIDIFIER")
+    assert fan.state["temperature"] < still.state["temperature"] - 1.5
+    assert fan.state["humidity"] < still.state["humidity"] - 5
+    assert humidifier.state["humidity"] > still.state["humidity"] + 8
+
+
+def test_uv_light_shows_in_the_next_reading():
+    env = Environment("LETTUCE", seed=1)
+    advance(env, 60, start=MIDNIGHT)
+    before = env.state["brightness"]
+    env.apply("UV_LIGHT", "ACTIVATE", 900, MIDNIGHT + 3600)
+    env.step(30, MIDNIGHT + 3630)
+    assert env.state["brightness"] > before + 600
+
+
+def test_the_air_goes_back_when_the_fan_stops():
+    env = Environment("BASIL", seed=1)
+    advance(env, 30)
+    ambient = env.state["temperature"]
+    env.apply("FAN", "ACTIVATE", 600, NOON + 1800)
+    advance(env, 10, start=NOON + 1800)
+    cooled = env.state["temperature"]
+    advance(env, 60, start=NOON + 2400)
+    assert cooled < env.state["temperature"] and abs(env.state["temperature"] - ambient) < 1.5
+
+
+def test_placement_filters_the_weather():
+    sunny = Weather(30, 45, 0, 900, 0, 850, 5, True, 0, "CLEAR", "Despejado", "", 0)
+
+    def settle(setting: str | None, exposure: str | None) -> Environment:
+        env = Environment("TOMATO", seed=1)
+        env.set_mode("WEATHER")
+        env.set_placement(setting, exposure)
+        env.weather = sunny
+        advance(env, 180)
+        return env
+
+    full_sun, shade, indoor = settle("OUTDOOR", "FULL_SUN"), settle("OUTDOOR", "SHADE"), settle("INDOOR", "PARTIAL_SUN")
+    assert full_sun.state["temperature"] > shade.state["temperature"] + 2
+    assert full_sun.state["brightness"] > shade.state["brightness"] + 800
+    assert indoor.state["temperature"] < 27 and indoor.state["brightness"] < 600
+    assert settle(None, None).state["brightness"] == pytest.approx(full_sun.state["brightness"], abs=1)
+    with pytest.raises(ValueError, match="Lugar"):
+        Environment("TOMATO").set_placement("GARAGE", None)
