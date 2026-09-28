@@ -44,6 +44,8 @@ class PotRequest(CamelModel):
     manual: ManualValues | None = None
     location: LocationIn | None = None
     interval_seconds: float = Field(30, ge=10, le=300)
+    setting: Literal["INDOOR", "OUTDOOR"] | None = None
+    exposure: Literal["FULL_SUN", "PARTIAL_SUN", "SHADE"] | None = None
 
 
 def create_app(manager: PotManager, token: str | None) -> FastAPI:
@@ -84,7 +86,8 @@ def create_app(manager: PotManager, token: str | None) -> FastAPI:
         location = None if payload.location is None else Location(**payload.location.model_dump())
         config = PotConfig(crop_id=crop_id, key=payload.key, crop_type=payload.crop_type, mode=payload.mode,
                            manual=payload.manual.as_dict() if payload.manual else {}, location=location,
-                           interval_seconds=payload.interval_seconds)
+                           interval_seconds=payload.interval_seconds, setting=payload.setting,
+                           exposure=payload.exposure)
         try:
             return manager.snapshot(manager.upsert(config))
         except ValueError as error:

@@ -169,3 +169,24 @@ def test_without_token_the_control_api_is_disabled(manager):
     disabled = TestClient(create_app(manager, None))
     assert disabled.get("/health").json()["api"] == "DISABLED"
     assert disabled.get("/v1/pots").status_code == 503
+
+
+def test_an_executed_command_brings_the_next_reading_forward(manager):
+    manager.upsert(PotConfig(CROP, KEY, "LETTUCE", mode="AUTO", interval_seconds=300))
+    pot = manager.get(CROP)
+    pot.next_at = time.time() + 300
+    ack = pot.device.handle_command('{"id": "c1", "actuator": "FAN", "action": "ACTIVATE", "durationSeconds": 60}',
+                                    time.time())
+    assert ack["status"] == "EXECUTED"
+    assert pot.next_at <= time.time() + 2.5
+
+
+def test_the_placement_reaches_the_simulated_environment(client, auth, manager):
+    response = client.put(f"/v1/pots/{CROP}", headers=auth, json={
+        "key": KEY, "cropType": "TOMATO", "mode": "AUTO", "setting": "INDOOR", "exposure": "SHADE"})
+    assert response.status_code == 200
+    assert response.json()["setting"] == "INDOOR" and response.json()["exposure"] == "SHADE"
+    environment = manager.get(CROP).device.environment
+    assert (environment.setting, environment.exposure) == ("INDOOR", "SHADE")
+    wrong = client.put(f"/v1/pots/{CROP}", headers=auth, json={"key": KEY, "cropType": "TOMATO", "setting": "ROOF"})
+    assert wrong.status_code == 422
