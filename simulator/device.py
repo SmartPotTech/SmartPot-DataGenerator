@@ -4,6 +4,7 @@ import json
 import logging
 import ssl
 import time
+from collections.abc import Callable
 
 import paho.mqtt.client as mqtt
 
@@ -30,6 +31,8 @@ class SimulatedDevice:
         self.last_reading: dict[str, float] | None = None
         self.last_published_at: float | None = None
         self.last_command: dict | None = None
+        # Aviso de que un comando se ejecutó: el administrador adelanta la próxima lectura.
+        self.on_executed: Callable[[], None] | None = None
 
     def _build_client(self) -> mqtt.Client:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"smartpot-sim-{self.device.crop_id}",
@@ -82,6 +85,8 @@ class SimulatedDevice:
         except ValueError as error:
             ack = {"id": command_id, "status": "FAILED", "message": str(error)}
         self.last_command = {**ack, "at": now}
+        if ack["status"] == "EXECUTED" and self.on_executed:
+            self.on_executed()
         return ack
 
     @property

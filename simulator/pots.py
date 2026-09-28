@@ -13,13 +13,15 @@ from dataclasses import dataclass, field
 
 from simulator.config import DeviceConfig, Settings
 from simulator.device import SimulatedDevice
-from simulator.environment import MODES
+from simulator.environment import EXPOSURES, MODES, SETTINGS
 from simulator.weather import Weather, WeatherClient
 
 log = logging.getLogger(__name__)
 
 TICK_SECONDS = 1.0
 WEATHER_RETRY_SECONDS = 120.0
+# Tras ejecutar un comando, la lectura siguiente sale en este tiempo para que se vea su efecto.
+AFTER_COMMAND_SECONDS = 2.0
 
 
 @dataclass
@@ -39,6 +41,8 @@ class PotConfig:
     location: Location | None = None
     interval_seconds: float = 30.0
     managed: bool = True
+    setting: str | None = None
+    exposure: str | None = None
 
 
 @dataclass
@@ -78,6 +82,10 @@ class PotManager:
             raise ValueError(f"Modo desconocido: {config.mode}")
         if config.mode == "WEATHER" and config.location is None:
             raise ValueError("El modo clima necesita una ubicación")
+        if config.setting is not None and config.setting not in SETTINGS:
+            raise ValueError(f"Lugar desconocido: {config.setting}")
+        if config.exposure is not None and config.exposure not in EXPOSURES:
+            raise ValueError(f"Exposición desconocida: {config.exposure}")
         with self._lock:
             pot = self.pots.get(config.crop_id)
             previous: PotConfig | None = pot.config if pot else None
@@ -85,14 +93,16 @@ class PotManager:
                 if pot is not None:
                     pot.device.stop()
                 device = self.factory(DeviceConfig(config.crop_id, config.key, config.crop_type), self.settings)
-                device.start()
                 pot = VirtualPot(config=config, device=device)
+                device.on_executed = lambda target=pot: self._publish_soon(target)
+                device.start()
                 self.pots[config.crop_id] = pot
                 previous = None
                 log.info("Cultivo virtual %s (%s) en modo %s", config.crop_id, config.crop_type, config.mode)
             pot.config = config
             environment = pot.device.environment
             environment.set_mode(config.mode)
+            environment.set_placement(config.setting, config.exposure)
             # Solo los medidores que cambiaron: repetir la configuración no borra el efecto de los actuadores.
             before = previous.manual if previous else {}
             changed = {name: value for name, value in config.manual.items() if before.get(name) != value}
@@ -103,6 +113,10 @@ class PotManager:
                 self._refresh_weather(pot, force=True)
             pot.next_at = min(pot.next_at or float("inf"), time.time() + 2)
             return pot
+
+    @staticmethod
+    def _publish_soon(pot: VirtualPot) -> None:
+        pot.next_at = min(pot.next_at, time.time() + AFTER_COMMAND_SECONDS)
 
     def remove(self, crop_id: str) -> bool:
         with self._lock:
@@ -175,6 +189,8 @@ class PotManager:
             "managed": config.managed,
             "connected": pot.device.connected,
             "intervalSeconds": config.interval_seconds,
+            "setting": config.setting,
+            "exposure": config.exposure,
             "lastReading": pot.device.last_reading,
             "lastPublishedAt": _iso(pot.device.last_published_at),
             "manual": {name: round(value, 2) for name, value in environment.manual.items()},
