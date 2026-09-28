@@ -2,11 +2,10 @@
 
 import json
 import logging
+import paho.mqtt.client as mqtt
 import ssl
 import time
 from collections.abc import Callable
-
-import paho.mqtt.client as mqtt
 
 from simulator.config import DeviceConfig, Settings
 from simulator.environment import Environment
