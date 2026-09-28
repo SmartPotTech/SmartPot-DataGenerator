@@ -1,8 +1,7 @@
-import time
-from unittest.mock import MagicMock
-
 import pytest
+import time
 from fastapi.testclient import TestClient
+from unittest.mock import MagicMock
 
 from simulator.api import create_app
 from simulator.config import DeviceConfig, Settings
@@ -30,6 +29,7 @@ def fake_fetch(responses: dict):
         if "geocoding" in url:
             return PLACES
         return responses["weather"]
+
     return fetch
 
 
@@ -138,7 +138,7 @@ def test_control_api_creates_updates_and_removes_a_pot(client, auth, manager):
     assert state["weather"]["label"] == "Despejado"
 
     manual = client.put(f"/v1/pots/{CROP}", headers=auth, json={**body, "mode": "MANUAL",
-                                                               "manual": {"soilMoisture": 30, "ph": 7.2}})
+                                                                "manual": {"soilMoisture": 30, "ph": 7.2}})
     assert manual.json()["manual"]["soilMoisture"] == 30
 
     manager.tick(time.time() + 60)
