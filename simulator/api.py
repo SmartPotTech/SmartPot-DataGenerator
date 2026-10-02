@@ -2,11 +2,12 @@
 nunca se publica en Internet. /health es pública para el chequeo del contenedor."""
 
 import secrets
+from typing import Annotated, Literal
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from typing import Annotated, Literal
 
 from simulator.pots import Location, PotConfig, PotManager
 
