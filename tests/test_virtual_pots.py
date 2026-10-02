@@ -1,7 +1,8 @@
-import pytest
 import time
-from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
 
 from simulator.api import create_app
 from simulator.config import DeviceConfig, Settings

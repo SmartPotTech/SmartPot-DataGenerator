@@ -1,6 +1,7 @@
 import json
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from simulator.config import DeviceConfig, Settings, parse_devices
 from simulator.device import SimulatedDevice
