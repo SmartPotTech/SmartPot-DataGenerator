@@ -58,6 +58,31 @@ def test_ph_doser_lowers_ph_and_deactivate_stops_actuators():
     assert not env.is_active("FAN", NOON + 2)
 
 
+def test_an_actuator_without_duration_stays_on_until_turned_off():
+    env = Environment("BASIL", seed=1)
+    assert env.apply("FAN", "ACTIVATE", None, NOON) == "Ventilador encendido"
+    assert env.is_active("FAN", NOON + 5 * 3600)
+    assert env.active_actuators(NOON + 5 * 3600) == {"FAN": None}
+    assert env.active_fraction("FAN", NOON + 3600, NOON + 3660) == 1.0
+    env.apply("FAN", "DEACTIVATE", None, NOON + 6 * 3600)
+    assert not env.is_active("FAN", NOON + 6 * 3600 + 1)
+
+
+def test_acknowledgements_read_durations_like_a_person():
+    env = Environment("TOMATO", seed=1)
+    assert env.apply("WATER_PUMP", "ACTIVATE", 15, NOON) == "Bomba de agua encendida por 15 s"
+    assert env.apply("FAN", "ACTIVATE", 600, NOON) == "Ventilador encendido por 10 min"
+    assert env.apply("UV_LIGHT", "ACTIVATE", 7200, NOON) == "Luz ultravioleta encendida por 2 h"
+
+
+def test_a_doser_without_duration_releases_one_dose():
+    env = Environment("TOMATO", seed=1)
+    before = env.state["ph"]
+    assert env.apply("PH_DOSER", "ACTIVATE", None, NOON) == "Dosificador de pH encendido por 3 s"
+    assert env.state["ph"] == pytest.approx(before - 0.36)
+    assert not env.is_active("PH_DOSER", NOON + 4)
+
+
 def test_unknown_actuators_are_rejected():
     with pytest.raises(ValueError, match="no existe"):
         Environment("LETTUCE").apply("HEATER", "ACTIVATE", 10, NOON)

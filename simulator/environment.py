@@ -68,11 +68,23 @@ ACTUATOR_NAMES = {
     "PH_DOSER": ("Dosificador de pH", "o"),
 }
 SUPPORTED_ACTUATORS = set(ACTUATOR_NAMES)
+# Los dosificadores sueltan una dosis: sin duración, la de 3 s.
+DOSERS = {"NUTRIENT_DOSER", "PH_DOSER"}
+DOSE_SECONDS = 3
 
 
 def clamp(name: str, value: float) -> float:
     low, high = LIMITS[name]
     return max(low, min(high, value))
+
+
+def readable(seconds: int) -> str:
+    """La duración como la lee una persona: 15 s, 10 min, 2 h."""
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600} h"
+    if seconds % 60 == 0:
+        return f"{seconds // 60} min"
+    return f"{seconds} s"
 
 
 @dataclass
@@ -81,7 +93,7 @@ class Environment:
     seed: int | None = None
     utc_offset_hours: float = 0.0
     state: dict[str, float] = field(default_factory=dict)
-    active: dict[str, tuple[float, float]] = field(default_factory=dict)
+    active: dict[str, tuple[float, float | None]] = field(default_factory=dict)
     mode: str = "AUTO"
     manual: dict[str, float] = field(default_factory=dict)
     weather: Weather | None = None
@@ -117,38 +129,38 @@ class Environment:
             self.manual[name] = clamp(name, float(value))
             self.state[name] = self.manual[name]
 
-    def active_actuators(self, now: float) -> dict[str, float]:
-        """Actuadores encendidos y el momento (epoch) en que se apagan."""
-        return {name: window[1] for name, window in self.active.items() if window[0] <= now < window[1]}
+    def active_actuators(self, now: float) -> dict[str, float | None]:
+        """Actuadores encendidos y el momento (epoch) en que se apagan; None si siguen hasta apagarlos."""
+        return {name: window[1] for name, window in self.active.items() if self.is_active(name, now)}
 
     def is_active(self, actuator: str, now: float) -> bool:
         window = self.active.get(actuator)
-        return window is not None and window[0] <= now < window[1]
+        return window is not None and window[0] <= now and (window[1] is None or now < window[1])
 
     def active_fraction(self, actuator: str, start: float, end: float) -> float:
         """Fracción del intervalo [start, end] en la que el actuador estuvo encendido."""
         window = self.active.get(actuator)
         if window is None or end <= start:
             return 0.0
-        overlap = min(end, window[1]) - max(start, window[0])
-        return max(0.0, overlap) / (end - start)
+        stop = end if window[1] is None else min(end, window[1])
+        return max(0.0, stop - max(start, window[0])) / (end - start)
 
     def apply(self, actuator: str, action: str, duration: int | None, now: float) -> str:
-        """Aplica un comando y devuelve el mensaje del ACK."""
+        """Aplica un comando y devuelve el mensaje del ACK. Sin duración, sigue encendido hasta apagarlo."""
         if actuator not in SUPPORTED_ACTUATORS:
             raise ValueError(f"El actuador {actuator} no existe en este cultivo")
+        name, ending = ACTUATOR_NAMES[actuator]
         if action == "DEACTIVATE":
             self.active.pop(actuator, None)
-            name, ending = ACTUATOR_NAMES[actuator]
             return f"{name} apagad{ending}"
-        seconds = duration if duration else 3600
-        self.active[actuator] = (now, now + seconds)
+        if actuator in DOSERS:
+            duration = duration or DOSE_SECONDS
+        self.active[actuator] = (now, now + duration if duration else None)
         if actuator == "PH_DOSER":
-            self.state["ph"] = clamp("ph", self.state["ph"] - 0.12 * seconds)
+            self.state["ph"] = clamp("ph", self.state["ph"] - 0.12 * duration)
         elif actuator == "NUTRIENT_DOSER":
-            self.state["tds"] = clamp("tds", self.state["tds"] + 70 * seconds)
-        name, ending = ACTUATOR_NAMES[actuator]
-        return f"{name} encendid{ending} por {seconds} s"
+            self.state["tds"] = clamp("tds", self.state["tds"] + 70 * duration)
+        return f"{name} encendid{ending}" + (f" por {readable(duration)}" if duration else "")
 
     def step(self, seconds: float, now: float) -> None:
         minutes = seconds / 60.0
