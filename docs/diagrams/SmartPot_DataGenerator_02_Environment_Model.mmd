@@ -9,16 +9,18 @@ flowchart LR
   subgraph actuadores["Efecto de los actuadores"]
     direction TB
     pump["Bomba · +1,2 % de sustrato por segundo"]
-    fan["Ventilador · −2 °C y −6 % de humedad"]
-    uv["Luz de cultivo · +700 de luz"]
-    hum["Humidificador · +12 % de humedad"]
-    ph["Dosificador de pH · baja el pH"]
-    nut["Dosificador de nutrientes · sube el TDS"]
+    fan["Ventilador · −0,35 °C y −1,5 % de humedad por minuto"]
+    uv["Luz ultravioleta · +900 de luz y +0,05 °C por minuto"]
+    hum["Humidificador · +2,5 % de humedad por minuto"]
+    ph["Dosificador de pH · −0,12 de pH por segundo de dosis"]
+    nut["Dosificador de nutrientes · +70 ppm por segundo de dosis"]
   end
+  place["Lugar del cultivo<br/>bajo techo: el clima llega amortiguado y no llueve<br/>media sombra y sombra: menos luz y calor"]
   relax["step<br/>cada variable se acerca a su objetivo<br/>evaporación del sustrato"]
   noise["reading<br/>ruido gaussiano de sensor<br/>límites de la escala"]
   out(["telemetry<br/>temperature · humidity · brightness · ph<br/>tds · soilMoisture · atmosphere"])
   objetivo --> relax
+  place --> objetivo
   actuadores --> relax
   relax --> noise --> out
   classDef leaf fill:#DDF5EA,stroke:#067A52,color:#17261F
@@ -31,4 +33,5 @@ flowchart LR
   class auto,manual,weather sun
   class pump,fan,uv,hum,ph,nut leaf
   class relax,noise muted
+  class place water
   class out core
