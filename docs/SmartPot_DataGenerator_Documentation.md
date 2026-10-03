@@ -5,7 +5,7 @@ acento: DataGenerator
 subtitulo: El simulador de SmartPot
 bajada: Cultivos virtuales siempre encendidos que hablan el contrato MQTT v1: modelo físico, modos día y noche, manual y clima real, efecto de los actuadores, API de control interna, configuración y pruebas.
 documento: SmartPot-DataGenerator
-version: 1.0 · septiembre 2026
+version: 1.1 · octubre 2026
 equipo: SmartPotTech
 proyecto: smartpot.app
 -->
@@ -18,7 +18,7 @@ proyecto: smartpot.app
 |--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Proyecto                       | SmartPot · [smartpot.app](https://smartpot.app)                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Componente                     | [SmartPot-DataGenerator](https://github.com/SmartPotTech/SmartPot-DataGenerator)                                                                                                                                                                                                                                                                                                                                                                        |
-| Versión                        | 1.0 · septiembre 2026                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Versión                        | 1.1 · octubre 2026                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Alcance                        | Cultivos virtuales, cultivos fijos para demo y QA, modelo físico, API de control, configuración, pruebas y operación                                                                                                                                                                                                                                                                                                                                    |
 | Documentación de la plataforma | [Documentación técnica](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Technical_Documentation.md), [recorrido del proyecto](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Project_Journey.md), [ciclo de vida](https://github.com/SmartPotTech/.github/blob/main/docs/SmartPot_Software_Lifecycle.md) y [diagramas generales](https://github.com/SmartPotTech/.github/blob/main/docs/README.md#diagramas-generales) |
 | Mantenimiento                  | Se genera desde `docs/` de este repositorio con las herramientas de `.github/docs/tools`; se actualiza con cada cambio del componente                                                                                                                                                                                                                                                                                                                   |
@@ -136,16 +136,18 @@ flowchart LR
   subgraph actuadores["Efecto de los actuadores"]
     direction TB
     pump["Bomba · +1,2 % de sustrato por segundo"]
-    fan["Ventilador · −2 °C y −6 % de humedad"]
-    uv["Luz de cultivo · +700 de luz"]
-    hum["Humidificador · +12 % de humedad"]
-    ph["Dosificador de pH · baja el pH"]
-    nut["Dosificador de nutrientes · sube el TDS"]
+    fan["Ventilador · −0,35 °C y −1,5 % de humedad por minuto"]
+    uv["Luz ultravioleta · +900 de luz y +0,05 °C por minuto"]
+    hum["Humidificador · +2,5 % de humedad por minuto"]
+    ph["Dosificador de pH · −0,12 de pH por segundo de dosis"]
+    nut["Dosificador de nutrientes · +70 ppm por segundo de dosis"]
   end
+  place["Lugar del cultivo<br/>bajo techo: el clima llega amortiguado y no llueve<br/>media sombra y sombra: menos luz y calor"]
   relax["step<br/>cada variable se acerca a su objetivo<br/>evaporación del sustrato"]
   noise["reading<br/>ruido gaussiano de sensor<br/>límites de la escala"]
   out(["telemetry<br/>temperature · humidity · brightness · ph<br/>tds · soilMoisture · atmosphere"])
   objetivo --> relax
+  place --> objetivo
   actuadores --> relax
   relax --> noise --> out
   classDef leaf fill:#DDF5EA,stroke:#067A52,color:#17261F
@@ -158,17 +160,21 @@ flowchart LR
   class auto,manual,weather sun
   class pump,fan,uv,hum,ph,nut leaf
   class relax,noise muted
+  class place water
   class out core
 ```
 
-| Modo      | Qué refleja                                                                                                                                                     |
-|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `AUTO`    | Día y noche típicos de la especie alrededor de su línea base, en la hora local (`SIMULATOR_UTC_OFFSET`)                                                         |
-| `MANUAL`  | Los medidores que mueve la persona; los actuadores siguen actuando encima                                                                                       |
-| `WEATHER` | El clima actual del lugar con [Open-Meteo](https://open-meteo.com), abierto y sin clave: la lluvia moja el sustrato y el sol y el aire seco lo secan más rápido |
+| Modo      | Qué refleja                                                                                                                                                                                                                                                                                                |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `AUTO`    | Día y noche típicos de la especie alrededor de su línea base, en la hora local (`SIMULATOR_UTC_OFFSET`)                                                                                                                                                                                                    |
+| `MANUAL`  | Los medidores que mueve la persona; los actuadores siguen actuando encima                                                                                                                                                                                                                                  |
+| `WEATHER` | El clima actual del lugar con [Open-Meteo](https://open-meteo.com), abierto y sin clave: la lluvia moja el sustrato y el sol y el aire seco lo secan más rápido. El lugar lo filtra: bajo techo la temperatura y la humedad se amortiguan y no llueve; la media sombra y la sombra bajan la luz y el calor |
 
-Cada orden responde con un mensaje en español («Bomba de agua encendida por 15 s»); un actuador que no existe responde
-`FAILED` («El actuador X no existe en este cultivo»).
+Los actuadores mueven las lecturas en los tres modos. Encendido sin duración, un actuador sigue así hasta que se apaga;
+los dosificadores sueltan una dosis de 3 s si no la traen. Tras cada orden ejecutada el cultivo publica una lectura a los
+2 s, para que el efecto se vea sin esperar el intervalo. Cada orden responde con un mensaje en español que dice la
+duración como se lee («Ventilador encendido por 10 min»); un actuador que no existe responde `FAILED` («El actuador X no
+existe en este cultivo»).
 
 <!-- parte: PARTE III | Operación -->
 
@@ -176,13 +182,13 @@ Cada orden responde con un mensaje en español («Bomba de agua encendida por 15
 
 Interna, con `Authorization: Bearer <SIMULATOR_TOKEN>`; sin token responde 503.
 
-| Método | Ruta                            | Descripción                                                                       |
-|--------|---------------------------------|-----------------------------------------------------------------------------------|
-| GET    | `/health`                       | Cultivos simulados y conexiones                                                   |
-| GET    | `/v1/pots`, `/v1/pots/{cropId}` | Estado: modo, lectura, medidores, clima, actuadores encendidos y último comando   |
-| PUT    | `/v1/pots/{cropId}`             | Crea o cambia: `key`, `cropType`, `mode`, `manual`, `location`, `intervalSeconds` |
-| DELETE | `/v1/pots/{cropId}`             | Retira el cultivo simulado y publica `offline`                                    |
-| GET    | `/v1/places?q=`, `/v1/weather`  | Lugares para el modo clima y clima actual de un punto                             |
+| Método | Ruta                            | Descripción                                                                                              |
+|--------|---------------------------------|----------------------------------------------------------------------------------------------------------|
+| GET    | `/health`                       | Cultivos simulados y conexiones                                                                          |
+| GET    | `/v1/pots`, `/v1/pots/{cropId}` | Estado: modo, lectura, medidores, clima, actuadores encendidos y último comando                          |
+| PUT    | `/v1/pots/{cropId}`             | Crea o cambia: `key`, `cropType`, `mode`, `manual`, `location`, `setting`, `exposure`, `intervalSeconds` |
+| DELETE | `/v1/pots/{cropId}`             | Retira el cultivo simulado y publica `offline`                                                           |
+| GET    | `/v1/places?q=`, `/v1/weather`  | Lugares para el modo clima y clima actual de un punto                                                    |
 
 Los cultivos de `SIMULATOR_DEVICES` no se pueden cambiar por la API.
 
@@ -199,8 +205,9 @@ Los cultivos de `SIMULATOR_DEVICES` no se pueden cambiar por la API.
 
 ## 7. Pruebas
 
-`uv run ruff check .` y `uv run pytest`: 23 pruebas sobre el modelo físico, los modos manual y clima, la lluvia y el
-sol, la caché del clima, el contrato de tópicos, los comandos y su ACK y la API de control.
+`uv run ruff check .` y `uv run pytest`: 34 pruebas sobre el modelo físico, el efecto de los actuadores en los tres
+modos, los actuadores sin duración, el lugar y el clima, la lluvia y el sol, la caché del clima, el contrato de tópicos,
+los comandos con su ACK y su mensaje, la lectura tras una orden y la API de control.
 
 ## 8. Operación
 
