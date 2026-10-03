@@ -12,21 +12,22 @@ parar en un contenedor y hablan el mismo contrato MQTT v1 que el ESP32 de un cul
 sus tópicos. Cada cultivo simulado:
 
 - Publica telemetría (temperatura, humedad, luz, pH, TDS, humedad del sustrato y presión) con ruido de sensor.
-- Obedece los comandos: la bomba sube la humedad del sustrato, el ventilador enfría y seca el aire, la luz de cultivo
-  suma luz, el humidificador sube la humedad y los dosificadores corrigen pH y nutrientes.
+- Obedece los comandos en los tres modos: la bomba sube la humedad del sustrato, el ventilador enfría y seca el aire,
+  la luz ultravioleta suma luz, el humidificador sube la humedad y los dosificadores corrigen pH y nutrientes. Sin
+  duración, un actuador sigue encendido hasta que se apaga, y tras cada orden ejecutada publica una lectura a los 2 s.
 - Confirma cada comando con su ACK (`EXECUTED` o `FAILED`) y anuncia su estado `online`/`offline` con mensaje retenido y
   última voluntad.
 
 Cada cultivo simulado trabaja en uno de tres modos:
 
-| Modo      | Qué refleja                                                                                                                                  | Para qué sirve                                                                                |
-|-----------|----------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| `AUTO`    | Ciclo de día y noche alrededor de los valores ideales de la especie                                                                          | Datos demo y pruebas de extremo a extremo                                                     |
-| `MANUAL`  | Los medidores que mueve la persona desde la PWA; los actuadores siguen actuando encima                                                       | Provocar una situación (sustrato seco, pH alto…) y ver cómo reacciona el asistente            |
-| `WEATHER` | El clima real del lugar elegido: temperatura, humedad, sol, lluvia y presión, con [Open-Meteo](https://open-meteo.com) (abierto y sin clave) | Un cultivo «al aire libre» que se seca más rápido con sol y aire seco y se moja cuando llueve |
+| Modo      | Qué refleja                                                                                                                                                                                                                                                       | Para qué sirve                                                                                      |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `AUTO`    | Ciclo de día y noche alrededor de los valores ideales de la especie                                                                                                                                                                                               | Datos demo y pruebas de extremo a extremo                                                           |
+| `MANUAL`  | Los medidores que mueve la persona desde la PWA; los actuadores siguen actuando encima                                                                                                                                                                            | Provocar una situación (sustrato seco, pH alto…) y ver cómo reacciona el asistente                  |
+| `WEATHER` | El clima real del lugar del cultivo: temperatura, humedad, sol, lluvia y presión, con [Open-Meteo](https://open-meteo.com) (abierto y sin clave), filtrado por el lugar: bajo techo se amortigua y no llueve; la media sombra y la sombra bajan la luz y el calor | Un cultivo que se seca más rápido con sol y aire seco y se moja cuando llueve si está al aire libre |
 
-En modo clima la PWA dibuja el cultivo en vivo al aire libre según la condición (despejado, nublado, niebla, llovizna,
-lluvia, tormenta o nieve) y si es de día o de noche.
+La PWA dibuja el cultivo en su lugar con el clima de afuera (despejado, nublado, niebla, llovizna, lluvia, tormenta o
+nieve), de día o de noche. Cada confirmación dice la duración como se lee: «Ventilador encendido por 10 min».
 
 Los cultivos virtuales los pide la API: nacen al crear un cultivo `VIRTUAL`, se retiran al pausar su simulación o al
 borrarlo, y no se pueden convertir en reales. Los cultivos fijos de `SIMULATOR_DEVICES` (demo y QA) son cultivos reales
@@ -65,15 +66,15 @@ Es interna: solo [SmartPot-API](https://github.com/SmartPotTech/SmartPot-API) la
 `Authorization: Bearer <SIMULATOR_TOKEN>`, y nunca se publica en Internet. La PWA habla con la API de SmartPot, que
 comprueba que el cultivo sea virtual y de quien lo pide, y descifra su clave antes de pedir la simulación.
 
-| Método | Ruta                               | Descripción                                                                                           |
-|--------|------------------------------------|-------------------------------------------------------------------------------------------------------|
-| GET    | `/health`                          | Pública: cultivos simulados y conexiones                                                              |
-| GET    | `/v1/pots`                         | Todos los cultivos simulados y su estado                                                              |
-| GET    | `/v1/pots/{cropId}`                | Estado: modo, última lectura, medidores, clima, actuadores encendidos y último comando                |
-| PUT    | `/v1/pots/{cropId}`                | Crea o cambia un cultivo simulado: `key`, `cropType`, `mode`, `manual`, `location`, `intervalSeconds` |
-| DELETE | `/v1/pots/{cropId}`                | Retira el cultivo simulado (publica `offline`)                                                        |
-| GET    | `/v1/places?q=`                    | Busca lugares para el modo clima                                                                      |
-| GET    | `/v1/weather?latitude=&longitude=` | Clima actual de un punto                                                                              |
+| Método | Ruta                               | Descripción                                                                                                                  |
+|--------|------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| GET    | `/health`                          | Pública: cultivos simulados y conexiones                                                                                     |
+| GET    | `/v1/pots`                         | Todos los cultivos simulados y su estado                                                                                     |
+| GET    | `/v1/pots/{cropId}`                | Estado: modo, última lectura, medidores, clima, actuadores encendidos y último comando                                       |
+| PUT    | `/v1/pots/{cropId}`                | Crea o cambia un cultivo simulado: `key`, `cropType`, `mode`, `manual`, `location`, `setting`, `exposure`, `intervalSeconds` |
+| DELETE | `/v1/pots/{cropId}`                | Retira el cultivo simulado (publica `offline`)                                                                               |
+| GET    | `/v1/places?q=`                    | Busca lugares para el modo clima                                                                                             |
+| GET    | `/v1/weather?latitude=&longitude=` | Clima actual de un punto                                                                                                     |
 
 ```json
 {
