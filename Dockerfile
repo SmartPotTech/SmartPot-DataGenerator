@@ -1,5 +1,7 @@
 FROM python:3.13-slim-bookworm AS build
 
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:0.12.12 /uv /bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -14,6 +16,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY simulator ./simulator
 
 FROM python:3.13-slim-bookworm
+
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
 LABEL org.opencontainers.image.title="SmartPot DataGenerator" \
       org.opencontainers.image.description="Macetas virtuales de SmartPot por MQTT: automáticas, manuales o con el clima real" \
