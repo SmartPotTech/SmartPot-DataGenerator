@@ -31,13 +31,22 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --no-dev
+
       - name: Set up Snyk CLI
         uses: snyk/actions/setup@master
 
       - name: Export requirements and run Snyk Test
         run: |
           uv export --no-dev --no-hashes -o requirements.txt
-          snyk test --org="${{ env.SNYK_CFG_ORG }}" --file=requirements.txt --severity-threshold=medium --sarif-file-output=snyk.sarif || {
+          snyk test --org="${{ env.SNYK_CFG_ORG }}" --file=requirements.txt --skip-unresolved --severity-threshold=medium --sarif-file-output=snyk.sarif || {
             code=$?
             if [ $code -eq 1 ]; then
               echo "::warning::Snyk detectó vulnerabilidades en dependencias de Python."
@@ -48,8 +57,8 @@ jobs:
           }
 
       - name: Upload SARIF to GitHub Security Tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('snyk.sarif') != ''
         with:
           sarif_file: snyk.sarif
           category: snyk-python
