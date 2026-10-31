@@ -70,6 +70,8 @@ pub struct SimulatedDevice {
     pub last_published_at: Arc<RwLock<Option<f64>>>,
     pub last_command: Arc<RwLock<Option<CommandRecord>>>,
     pub on_executed_tx: Option<mpsc::Sender<()>>,
+    pub payload_format: String,
+    pub seq_counter: Arc<std::sync::atomic::AtomicU32>,
     event_loop_task: Option<JoinHandle<()>>,
 }
 
@@ -97,6 +99,8 @@ impl SimulatedDevice {
             last_published_at: Arc::new(RwLock::new(None)),
             last_command: Arc::new(RwLock::new(None)),
             on_executed_tx,
+            payload_format: settings.payload_format.clone(),
+            seq_counter: Arc::new(std::sync::atomic::AtomicU32::new(1)),
             event_loop_task: None,
         }
     }
@@ -350,7 +354,22 @@ impl SimulatedDevice {
 
         if self.is_connected() {
             if let Some(ref client) = self.client {
-                if let Ok(payload) = serde_json::to_string(&reading) {
+                if self.payload_format == "compact_binary" || self.payload_format == "binary" {
+                    let seq = self.seq_counter.fetch_add(1, Ordering::Relaxed) as u16;
+                    let packet = encode_compact_binary(&reading, seq, now);
+                    if let Err(e) = client
+                        .publish(&self.topics.telemetry, QoS::AtMostOnce, false, packet.to_vec())
+                        .await
+                    {
+                        warn!(
+                            "Error publicando telemetría binaria para {}: {e}",
+                            self.device.crop_id
+                        );
+                    } else {
+                        let mut pub_at = self.last_published_at.write().await;
+                        *pub_at = Some(now);
+                    }
+                } else if let Ok(payload) = serde_json::to_string(&reading) {
                     if let Err(e) = client
                         .publish(&self.topics.telemetry, QoS::AtMostOnce, false, payload)
                         .await
@@ -371,5 +390,75 @@ impl SimulatedDevice {
         *last_r = Some(reading.clone());
 
         reading
+    }
+}
+
+/// Calcula el checksum CRC-8 ATM (polinomio 0x07) sobre el buffer dado.
+pub fn calc_crc8(data: &[u8]) -> u8 {
+    let mut crc: u8 = 0x00;
+    for &b in data {
+        crc ^= b;
+        for _ in 0..8 {
+            if (crc & 0x80) != 0 {
+                crc = (crc << 1) ^ 0x07;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+    crc
+}
+
+/// Codifica lecturas en un paquete binario compacto de 22 bytes con CRC-8.
+pub fn encode_compact_binary(reading: &HashMap<String, f64>, seq_id: u16, now: f64) -> [u8; 22] {
+    let mut out = [0u8; 22];
+    out[0] = 0x50; // 'P'
+    out[1] = 0x01; // Version 1
+    out[2..4].copy_from_slice(&seq_id.to_be_bytes());
+    out[4..8].copy_from_slice(&(now as u32).to_be_bytes());
+
+    let temp = (reading.get("temperature").copied().unwrap_or(0.0) * 100.0) as i16;
+    out[8..10].copy_from_slice(&temp.to_be_bytes());
+
+    let hum = (reading.get("humidity").copied().unwrap_or(0.0).clamp(0.0, 100.0) * 100.0) as u16;
+    out[10..12].copy_from_slice(&hum.to_be_bytes());
+
+    let ph = (reading.get("ph").copied().unwrap_or(0.0).clamp(0.0, 14.0) * 100.0) as u16;
+    out[12..14].copy_from_slice(&ph.to_be_bytes());
+
+    let tds = reading.get("tds").copied().unwrap_or(0.0).clamp(0.0, 65535.0) as u16;
+    out[14..16].copy_from_slice(&tds.to_be_bytes());
+
+    let moist = (reading.get("soilMoisture").or_else(|| reading.get("soil_moisture")).copied().unwrap_or(0.0).clamp(0.0, 100.0) * 100.0) as u16;
+    out[16..18].copy_from_slice(&moist.to_be_bytes());
+
+    let bright = reading.get("brightness").copied().unwrap_or(0.0).clamp(0.0, 65535.0) as u16;
+    out[18..20].copy_from_slice(&bright.to_be_bytes());
+
+    out[20] = 0x00; // flags
+    out[21] = calc_crc8(&out[..21]);
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_compact_binary_roundtrip() {
+        let mut r = HashMap::new();
+        r.insert("temperature".to_string(), 24.5);
+        r.insert("humidity".to_string(), 60.0);
+        r.insert("ph".to_string(), 6.5);
+        r.insert("tds".to_string(), 500.0);
+        r.insert("soilMoisture".to_string(), 45.0);
+        r.insert("brightness".to_string(), 12000.0);
+
+        let packet = encode_compact_binary(&r, 10, 1700000000.0);
+        assert_eq!(packet[0], 0x50);
+        assert_eq!(packet[1], 0x01);
+        assert_eq!(u16::from_be_bytes([packet[2], packet[3]]), 10);
+        assert_eq!(calc_crc8(&packet[..21]), packet[21]);
     }
 }

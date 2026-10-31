@@ -23,6 +23,7 @@ pub struct Settings {
     pub utc_offset_hours: f64,
     pub api_token: Option<String>,
     pub api_port: u16,
+    pub payload_format: String,
 }
 
 /// Parsea la lista de dispositivos desde el string de configuración:
@@ -98,6 +99,10 @@ pub fn load() -> Result<Settings, String> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8081);
 
+    let payload_format = env::var("SIMULATOR_PAYLOAD_FORMAT")
+        .unwrap_or_else(|_| "json".to_string())
+        .to_lowercase();
+
     let raw_devices = env::var("SIMULATOR_DEVICES").unwrap_or_default();
     let devices = parse_devices(&raw_devices, token.is_none())?;
 
@@ -112,5 +117,6 @@ pub fn load() -> Result<Settings, String> {
         utc_offset_hours,
         api_token: token,
         api_port,
+        payload_format,
     })
 }

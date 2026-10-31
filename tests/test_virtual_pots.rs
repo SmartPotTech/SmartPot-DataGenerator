@@ -34,6 +34,7 @@ fn test_settings() -> Settings {
         utc_offset_hours: -5.0,
         api_token: Some(TOKEN.to_string()),
         api_port: 8081,
+        payload_format: "json".to_string(),
     }
 }
 
