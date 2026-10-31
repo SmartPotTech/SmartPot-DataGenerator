@@ -414,54 +414,56 @@ pub fn calc_crc8(data: &[u8]) -> u8 {
     crc
 }
 
-/// Codifica lecturas en un paquete binario compacto de 22 bytes con CRC-8.
-pub fn encode_compact_binary(reading: &HashMap<String, f64>, seq_id: u16, now: f64) -> [u8; 22] {
-    let mut out = [0u8; 22];
-    out[0] = 0x50; // 'P'
-    out[1] = 0x01; // Version 1
+/// Tamaño del paquete compacto v2 (ver el formato en `encode_compact_binary`).
+pub const COMPACT_V2_SIZE: usize = 27;
+
+/// Codifica una lectura en el paquete compacto v2 (27 bytes, big-endian), la alternativa binaria al JSON v1:
+/// `[0]` 'P' · `[1]` versión 2 · `[2-3]` secuencia · `[4-7]` época en s · `[8-9]` máscara de presencia (bit 0
+/// temperatura, 1 humedad, 2 luz, 3 pH, 4 TDS, 5 presión, 6 sustrato) · `[10-11]` temperatura i16 ×100 ·
+/// `[12-13]` humedad ×100 · `[14-17]` luz u32 lux · `[18-19]` pH ×100 · `[20-21]` TDS · `[22-23]` presión ×10 hPa ·
+/// `[24-25]` sustrato ×100 · `[26]` CRC-8 (0x07). Un valor ausente deja su bit en 0; un 0 real lleva su bit.
+pub fn encode_compact_binary(
+    reading: &HashMap<String, f64>,
+    seq_id: u16,
+    now: f64,
+) -> [u8; COMPACT_V2_SIZE] {
+    let mut out = [0u8; COMPACT_V2_SIZE];
+    out[0] = 0x50;
+    out[1] = 0x02;
     out[2..4].copy_from_slice(&seq_id.to_be_bytes());
-    out[4..8].copy_from_slice(&(now as u32).to_be_bytes());
+    out[4..8].copy_from_slice(&(now.max(0.0) as u32).to_be_bytes());
 
-    let temp = (reading.get("temperature").copied().unwrap_or(0.0) * 100.0) as i16;
-    out[8..10].copy_from_slice(&temp.to_be_bytes());
-
-    let hum = (reading
-        .get("humidity")
-        .copied()
-        .unwrap_or(0.0)
-        .clamp(0.0, 100.0)
-        * 100.0) as u16;
-    out[10..12].copy_from_slice(&hum.to_be_bytes());
-
-    let ph = (reading.get("ph").copied().unwrap_or(0.0).clamp(0.0, 14.0) * 100.0) as u16;
-    out[12..14].copy_from_slice(&ph.to_be_bytes());
-
-    let tds = reading
-        .get("tds")
-        .copied()
-        .unwrap_or(0.0)
-        .clamp(0.0, 65535.0) as u16;
-    out[14..16].copy_from_slice(&tds.to_be_bytes());
-
-    let moist = (reading
-        .get("soilMoisture")
-        .or_else(|| reading.get("soil_moisture"))
-        .copied()
-        .unwrap_or(0.0)
-        .clamp(0.0, 100.0)
-        * 100.0) as u16;
-    out[16..18].copy_from_slice(&moist.to_be_bytes());
-
-    let bright = reading
-        .get("brightness")
-        .copied()
-        .unwrap_or(0.0)
-        .clamp(0.0, 65535.0) as u16;
-    out[18..20].copy_from_slice(&bright.to_be_bytes());
-
-    out[20] = 0x00; // flags
-    out[21] = calc_crc8(&out[..21]);
-
+    let mut mask: u16 = 0;
+    let mut field = |key: &str, bit: u16| -> Option<f64> {
+        let value = reading.get(key).copied().filter(|v| v.is_finite())?;
+        mask |= 1 << bit;
+        Some(value)
+    };
+    if let Some(v) = field("temperature", 0) {
+        out[10..12].copy_from_slice(
+            &((v * 100.0).round().clamp(i16::MIN as f64, i16::MAX as f64) as i16).to_be_bytes(),
+        );
+    }
+    if let Some(v) = field("humidity", 1) {
+        out[12..14].copy_from_slice(&((v.clamp(0.0, 100.0) * 100.0).round() as u16).to_be_bytes());
+    }
+    if let Some(v) = field("brightness", 2) {
+        out[14..18].copy_from_slice(&(v.clamp(0.0, u32::MAX as f64).round() as u32).to_be_bytes());
+    }
+    if let Some(v) = field("ph", 3) {
+        out[18..20].copy_from_slice(&((v.clamp(0.0, 14.0) * 100.0).round() as u16).to_be_bytes());
+    }
+    if let Some(v) = field("tds", 4) {
+        out[20..22].copy_from_slice(&(v.clamp(0.0, u16::MAX as f64).round() as u16).to_be_bytes());
+    }
+    if let Some(v) = field("atmosphere", 5) {
+        out[22..24].copy_from_slice(&((v.clamp(0.0, 6553.5) * 10.0).round() as u16).to_be_bytes());
+    }
+    if let Some(v) = field("soilMoisture", 6) {
+        out[24..26].copy_from_slice(&((v.clamp(0.0, 100.0) * 100.0).round() as u16).to_be_bytes());
+    }
+    out[8..10].copy_from_slice(&mask.to_be_bytes());
+    out[COMPACT_V2_SIZE - 1] = calc_crc8(&out[..COMPACT_V2_SIZE - 1]);
     out
 }
 
@@ -470,19 +472,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_encode_compact_binary_roundtrip() {
+    fn test_encode_compact_binary_v2_marks_present_sensors() {
         let mut r = HashMap::new();
-        r.insert("temperature".to_string(), 24.5);
-        r.insert("humidity".to_string(), 60.0);
-        r.insert("ph".to_string(), 6.5);
-        r.insert("tds".to_string(), 500.0);
-        r.insert("soilMoisture".to_string(), 45.0);
-        r.insert("brightness".to_string(), 12000.0);
+        r.insert("temperature".to_string(), 0.0);
+        r.insert("brightness".to_string(), 98_000.0);
+        r.insert("atmosphere".to_string(), 1013.2);
 
-        let packet = encode_compact_binary(&r, 10, 1700000000.0);
+        let packet = encode_compact_binary(&r, 10, 1_700_000_000.0);
+        assert_eq!(packet.len(), COMPACT_V2_SIZE);
         assert_eq!(packet[0], 0x50);
-        assert_eq!(packet[1], 0x01);
+        assert_eq!(packet[1], 0x02);
         assert_eq!(u16::from_be_bytes([packet[2], packet[3]]), 10);
-        assert_eq!(calc_crc8(&packet[..21]), packet[21]);
+        // temperatura (bit 0), luz (bit 2) y presión (bit 5); el resto ausente
+        assert_eq!(u16::from_be_bytes([packet[8], packet[9]]), 0b0010_0101);
+        assert_eq!(i16::from_be_bytes([packet[10], packet[11]]), 0);
+        assert_eq!(
+            u32::from_be_bytes([packet[14], packet[15], packet[16], packet[17]]),
+            98_000
+        );
+        assert_eq!(u16::from_be_bytes([packet[22], packet[23]]), 10_132);
+        assert_eq!(
+            calc_crc8(&packet[..COMPACT_V2_SIZE - 1]),
+            packet[COMPACT_V2_SIZE - 1]
+        );
     }
 }
