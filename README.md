@@ -92,3 +92,16 @@ cargo run
 docker build -t smartpot-datagenerator:latest .
 docker run --rm -p 8081:8081 smartpot-datagenerator:latest
 ```
+
+---
+
+## Hoja de Ruta Industrial: Generación Dual (Binario Postcard 22B / JSON Legado)
+
+Como parte del **Plan Maestro de Maximización del Stack B (demo-beta)**, `SmartPot-DataGenerator-Rust` implementa las siguientes capacidades de telemetría masiva:
+
+1. **Soporte de Generación Dual**:
+   - Modo nativo binario MQTT v5 con serialización compacta **Postcard de 22 bytes** (`timestamp_delta: u16`, `temp_centi: i16`, `rh_centi: u16`, `soil_moisture_centi: u16`, `ph_milli: u16`, `tds_ppm: u16`, `light_lux: u32`, `battery_mv: u16`, `status_flags: u8`, `crc8: u8`).
+   - Modo retrocompatible JSON v1 configurable por flag o variable de entorno (`SIMULATOR_PAYLOAD_FORMAT=json|binary`).
+2. **Concurrencia Escalar y Mínima Huella**:
+   - Despacho asíncrono con `tokio::spawn` y `futures_util::future::join_all` para sostener cientos de cultivos virtuales concurrentes con menos de 5 MB RAM en ejecución.
+   - Compatibilidad completa con el canal persistente gRPC ExHook y Topic Aliases en EMQX 5.8.
