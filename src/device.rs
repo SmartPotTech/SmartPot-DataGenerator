@@ -358,7 +358,12 @@ impl SimulatedDevice {
                     let seq = self.seq_counter.fetch_add(1, Ordering::Relaxed) as u16;
                     let packet = encode_compact_binary(&reading, seq, now);
                     if let Err(e) = client
-                        .publish(&self.topics.telemetry, QoS::AtMostOnce, false, packet.to_vec())
+                        .publish(
+                            &self.topics.telemetry,
+                            QoS::AtMostOnce,
+                            false,
+                            packet.to_vec(),
+                        )
                         .await
                     {
                         warn!(
@@ -420,19 +425,38 @@ pub fn encode_compact_binary(reading: &HashMap<String, f64>, seq_id: u16, now: f
     let temp = (reading.get("temperature").copied().unwrap_or(0.0) * 100.0) as i16;
     out[8..10].copy_from_slice(&temp.to_be_bytes());
 
-    let hum = (reading.get("humidity").copied().unwrap_or(0.0).clamp(0.0, 100.0) * 100.0) as u16;
+    let hum = (reading
+        .get("humidity")
+        .copied()
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        * 100.0) as u16;
     out[10..12].copy_from_slice(&hum.to_be_bytes());
 
     let ph = (reading.get("ph").copied().unwrap_or(0.0).clamp(0.0, 14.0) * 100.0) as u16;
     out[12..14].copy_from_slice(&ph.to_be_bytes());
 
-    let tds = reading.get("tds").copied().unwrap_or(0.0).clamp(0.0, 65535.0) as u16;
+    let tds = reading
+        .get("tds")
+        .copied()
+        .unwrap_or(0.0)
+        .clamp(0.0, 65535.0) as u16;
     out[14..16].copy_from_slice(&tds.to_be_bytes());
 
-    let moist = (reading.get("soilMoisture").or_else(|| reading.get("soil_moisture")).copied().unwrap_or(0.0).clamp(0.0, 100.0) * 100.0) as u16;
+    let moist = (reading
+        .get("soilMoisture")
+        .or_else(|| reading.get("soil_moisture"))
+        .copied()
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0)
+        * 100.0) as u16;
     out[16..18].copy_from_slice(&moist.to_be_bytes());
 
-    let bright = reading.get("brightness").copied().unwrap_or(0.0).clamp(0.0, 65535.0) as u16;
+    let bright = reading
+        .get("brightness")
+        .copied()
+        .unwrap_or(0.0)
+        .clamp(0.0, 65535.0) as u16;
     out[18..20].copy_from_slice(&bright.to_be_bytes());
 
     out[20] = 0x00; // flags
