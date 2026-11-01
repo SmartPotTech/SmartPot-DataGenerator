@@ -1,0 +1,13 @@
+# Avisos aceptados de forma explícita. Todos llegan por rumqttc 0.25.1 (la última versión publicada), que fija
+# rustls-webpki 0.102 y rustls-pemfile 2. rumqttc usa rustls-webpki solo como tipo de error: el simulador verifica los
+# certificados con su propio ClientConfig de rustls 0.23, que usa rustls-webpki 0.103.16 (con los arreglos), y lee
+# el PEM con rustls::pki_types. Quitar esta lista cuando rumqttc publique una versión con rustls-webpki 0.103.
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0098", # rustls-webpki 0.102: restricciones de nombre para URI
+    "RUSTSEC-2026-0099", # rustls-webpki 0.102: restricciones de nombre con comodines
+    "RUSTSEC-2026-0382", # rustls-webpki 0.102: intermedios no confiables
+    "RUSTSEC-2026-0049", # rustls-webpki 0.102: CRL por punto de distribución
+    "RUSTSEC-2026-0104", # rustls-webpki 0.102: panic al leer CRL
+    "RUSTSEC-2025-0134", # rustls-pemfile: sin mantenimiento
+]
