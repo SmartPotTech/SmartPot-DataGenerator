@@ -120,17 +120,20 @@ impl SimulatedDevice {
         ));
 
         if settings.tls {
+            // La verificación la hace rustls 0.23; el PEM se lee con pki-types (rustls-pemfile ya no se mantiene).
+            use rumqttc::tokio_rustls::rustls::pki_types::{pem::PemObject, CertificateDer};
             let mut root_cert_store = rumqttc::tokio_rustls::rustls::RootCertStore::empty();
             if let Some(ref ca_file) = settings.ca_file {
-                if let Ok(file) = std::fs::File::open(ca_file) {
-                    let mut reader = std::io::BufReader::new(file);
-                    let certs = rustls_pemfile::certs(&mut reader).flatten();
-                    for cert in certs {
-                        let _ = root_cert_store.add(cert);
+                match CertificateDer::pem_file_iter(ca_file) {
+                    Ok(certs) => {
+                        for cert in certs.flatten() {
+                            let _ = root_cert_store.add(cert);
+                        }
                     }
+                    Err(error) => warn!("No se pudo leer la CA {}: {}", ca_file, error),
                 }
             } else {
-                for cert in rustls_native_certs::load_native_certs().unwrap_or_default() {
+                for cert in rustls_native_certs::load_native_certs().certs {
                     let _ = root_cert_store.add(cert);
                 }
             }
