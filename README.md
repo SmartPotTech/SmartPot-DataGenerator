@@ -63,11 +63,24 @@ La API escucha en el puerto `8081` (configurable vía `SIMULATOR_PORT`).
 
 ---
 
-## Ejecución local y pruebas
+## Despliegue en un comando
+
+La imagen es pública: `ghcr.io/smartpottech/smartpot-datagenerator-rust`. La plataforma completa, con este servicio incluido, se
+levanta con un solo comando y sin descargar el código:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo-beta/compose.yaml | docker compose -f - up -d --wait
+```
+
+Abre http://localhost:5173 e ingresa con `demo@smartpot.app` / `SmartPot2026`. Se detiene con
+`docker compose -p smartpot-demo-beta down` (con `-v` borra también los datos). Más detalle en la
+[demo beta](https://github.com/SmartPotTech/.github/tree/main/docker/demo-beta).
+
+## Desarrollo y pruebas
 
 ### Requisitos
 
-- Rust 1.80+ (o superior)
+- Rust estable con soporte para la edición 2024 (1.85 o superior)
 - Cargo
 
 ### Compilación y pruebas
@@ -76,7 +89,7 @@ La API escucha en el puerto `8081` (configurable vía `SIMULATOR_PORT`).
 # Verificar tipos y compilación
 cargo check
 
-# Ejecutar suite de pruebas unitarias e integración (23 pruebas)
+# Ejecutar las pruebas unitarias y de integración
 cargo test
 
 # Ejecutar el linter estricto
@@ -86,22 +99,19 @@ cargo clippy --all-targets -- -D warnings
 cargo run
 ```
 
-### Construcción con Docker
+### Imagen Docker
 
 ```bash
-docker build -t smartpot-datagenerator:latest .
-docker run --rm -p 8081:8081 smartpot-datagenerator:latest
+docker pull ghcr.io/smartpottech/smartpot-datagenerator-rust:latest
 ```
 
 ---
 
-## Hoja de Ruta Industrial: Generación Dual (Binario Postcard 22B / JSON Legado)
+## Formatos de telemetría
 
-Como parte del **Plan Maestro de Maximización del Stack B (demo-beta)**, `SmartPot-DataGenerator-Rust` implementa las siguientes capacidades de telemetría masiva:
+- **JSON del contrato v1** (por defecto): `{"temperature","humidity","brightness","ph","tds","atmosphere","soilMoisture"}`.
+- **Paquete compacto v2** de 27 bytes con `SIMULATOR_PAYLOAD_FORMAT=binary`, en el mismo tópico: magic `0x50`, versión,
+  secuencia, época, máscara de presencia por sensor, presión, luz de 32 bits y CRC-8. El formato está en
+  `SmartPot-API-Go/internal/mqtt/parser.go` y en la guía de migración (§15); la API acepta ambos.
+- Cada dispositivo simulado corre en su propia tarea de Tokio con su conexión MQTT.
 
-1. **Soporte de Generación Dual**:
-   - Modo nativo binario MQTT v5 con serialización compacta **Postcard de 22 bytes** (`timestamp_delta: u16`, `temp_centi: i16`, `rh_centi: u16`, `soil_moisture_centi: u16`, `ph_milli: u16`, `tds_ppm: u16`, `light_lux: u32`, `battery_mv: u16`, `status_flags: u8`, `crc8: u8`).
-   - Modo retrocompatible JSON v1 configurable por flag o variable de entorno (`SIMULATOR_PAYLOAD_FORMAT=json|binary`).
-2. **Concurrencia Escalar y Mínima Huella**:
-   - Despacho asíncrono con `tokio::spawn` y `futures_util::future::join_all` para sostener cientos de cultivos virtuales concurrentes con menos de 5 MB RAM en ejecución.
-   - Compatibilidad completa con el canal persistente gRPC ExHook y Topic Aliases en EMQX 5.8.
