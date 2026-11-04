@@ -40,10 +40,10 @@ fn test_settings() -> Settings {
 
 #[test]
 fn test_weather_codes_map_to_scenes() {
-    assert_eq!(condition(0), ("CLEAR", "Despejado"));
+    assert_eq!(condition(0), ("CLEAR", "Clear"));
     assert_eq!(condition(63).0, "RAIN");
     assert_eq!(condition(95).0, "STORM");
-    assert_eq!(condition(1234), ("CLOUDY", "Nublado"));
+    assert_eq!(condition(1234), ("CLOUDY", "Cloudy"));
 }
 
 #[tokio::test]
@@ -142,7 +142,7 @@ async fn test_control_api_requires_the_token() {
     // /v1/pots con token erróneo -> 401
     let req = Request::builder()
         .uri("/v1/pots")
-        .header(header::AUTHORIZATION, "Bearer token-invalido")
+        .header(header::AUTHORIZATION, "Bearer invalid-token")
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();

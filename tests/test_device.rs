@@ -31,7 +31,7 @@ async fn test_commands_are_acknowledged_as_executed() {
 
     assert_eq!(ack.id, "c1");
     assert_eq!(ack.status, "EXECUTED");
-    assert_eq!(ack.message, "Bomba de agua encendida por 15 s");
+    assert_eq!(ack.message, "Water pump turned on for 15 s");
 }
 
 #[tokio::test]
@@ -55,7 +55,7 @@ async fn test_unreadable_commands_are_ignored() {
     let last_cmd_arc = Arc::new(RwLock::new(None));
 
     assert!(
-        SimulatedDevice::process_command("no es json", 0.0, &env_arc, &last_cmd_arc, CROP)
+        SimulatedDevice::process_command("not valid json", 0.0, &env_arc, &last_cmd_arc, CROP)
             .await
             .is_none()
     );
@@ -79,7 +79,7 @@ fn test_device_list_parsing() {
     assert_eq!(devices[0].crop_type, "LETTUCE");
     assert_eq!(devices[1].crop_type, "TOMATO");
 
-    assert!(parse_devices("sin-formato", true).is_err());
+    assert!(parse_devices("malformed", true).is_err());
     assert!(parse_devices("", true).is_err());
     assert!(parse_devices("", false).unwrap().is_empty());
 }

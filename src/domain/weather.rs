@@ -41,19 +41,19 @@ pub struct Weather {
     pub observed_at: String,
 }
 
-/// Mapea los códigos WMO al identificador de escena y texto en español.
+/// Mapea los códigos WMO al identificador de escena y texto en inglés.
 pub fn condition(code: i32) -> (&'static str, &'static str) {
     match code {
-        0 => ("CLEAR", "Despejado"),
-        1 => ("MOSTLY_CLEAR", "Mayormente despejado"),
-        2 => ("PARTLY_CLOUDY", "Parcialmente nublado"),
-        3 => ("CLOUDY", "Nublado"),
-        45 | 48 => ("FOG", "Niebla"),
-        51 | 53 | 55 | 56 | 57 => ("DRIZZLE", "Llovizna"),
-        61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => ("RAIN", "Lluvia"),
-        71 | 73 | 75 | 77 | 85 | 86 => ("SNOW", "Nieve"),
-        95 | 96 | 99 => ("STORM", "Tormenta"),
-        _ => ("CLOUDY", "Nublado"),
+        0 => ("CLEAR", "Clear"),
+        1 => ("MOSTLY_CLEAR", "Mostly clear"),
+        2 => ("PARTLY_CLOUDY", "Partly cloudy"),
+        3 => ("CLOUDY", "Cloudy"),
+        45 | 48 => ("FOG", "Fog"),
+        51 | 53 | 55 | 56 | 57 => ("DRIZZLE", "Drizzle"),
+        61 | 63 | 65 | 66 | 67 | 80 | 81 | 82 => ("RAIN", "Rain"),
+        71 | 73 | 75 | 77 | 85 | 86 => ("SNOW", "Snow"),
+        95 | 96 | 99 => ("STORM", "Storm"),
+        _ => ("CLOUDY", "Cloudy"),
     }
 }
 
@@ -123,20 +123,20 @@ impl WeatherClient {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| format!("Error en petición a Open-Meteo: {e}"))?;
+            .map_err(|e| format!("Open-Meteo request failed: {e}"))?;
 
         if !res.status().is_success() {
-            return Err(format!("Open-Meteo respondió código HTTP {}", res.status()));
+            return Err(format!("Open-Meteo returned HTTP {}", res.status()));
         }
 
         let body: serde_json::Value = res
             .json()
             .await
-            .map_err(|e| format!("Error deserializando JSON de Open-Meteo: {e}"))?;
+            .map_err(|e| format!("Error deserializing Open-Meteo JSON: {e}"))?;
 
         let current = body
             .get("current")
-            .ok_or_else(|| "Respuesta de Open-Meteo no contiene campo 'current'".to_string())?;
+            .ok_or_else(|| "Open-Meteo response missing 'current' field".to_string())?;
 
         let code = current
             .get("weather_code")
@@ -206,7 +206,7 @@ impl WeatherClient {
     /// Busca lugares geográficos por nombre.
     pub async fn search(&self, query: &str, count: u8) -> Result<Vec<Place>, String> {
         let url = format!(
-            "{}?name={}&count={}&language=es&format=json",
+            "{}?name={}&count={}&language=en&format=json",
             GEOCODING_URL,
             urlencoding_simple(query),
             count
@@ -218,16 +218,16 @@ impl WeatherClient {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| format!("Error en geocoding de Open-Meteo: {e}"))?;
+            .map_err(|e| format!("Open-Meteo geocoding error: {e}"))?;
 
         if !res.status().is_success() {
-            return Err(format!("Geocoding respondió código HTTP {}", res.status()));
+            return Err(format!("Geocoding returned HTTP {}", res.status()));
         }
 
         let body: serde_json::Value = res
             .json()
             .await
-            .map_err(|e| format!("Error deserializando geocoding: {e}"))?;
+            .map_err(|e| format!("Error deserializing geocoding response: {e}"))?;
 
         let mut places = Vec::new();
         if let Some(results) = body.get("results").and_then(|v| v.as_array()) {

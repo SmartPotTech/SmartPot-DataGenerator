@@ -62,11 +62,7 @@ impl IntoResponse for ApiError {
 fn verify_token(headers: &HeaderMap, token_opt: &Option<String>) -> Result<(), ApiError> {
     let expected = match token_opt {
         Some(t) => t,
-        None => {
-            return Err(ApiError::ServiceUnavailable(
-                "La API de control está deshabilitada",
-            ))
-        }
+        None => return Err(ApiError::ServiceUnavailable("Control API is disabled")),
     };
 
     let auth_header = headers
@@ -79,10 +75,10 @@ fn verify_token(headers: &HeaderMap, token_opt: &Option<String>) -> Result<(), A
             if provided.as_bytes().ct_eq(expected.as_bytes()).into() {
                 Ok(())
             } else {
-                Err(ApiError::Unauthorized("Token de servicio inválido"))
+                Err(ApiError::Unauthorized("Invalid service token"))
             }
         }
-        _ => Err(ApiError::Unauthorized("Token de servicio inválido")),
+        _ => Err(ApiError::Unauthorized("Invalid service token")),
     }
 }
 
@@ -148,7 +144,7 @@ async fn get_pot_handler(
         let snap = state.manager.snapshot(&pot, None).await;
         Ok(Json(snap))
     } else {
-        Err(ApiError::NotFound("El cultivo virtual no existe"))
+        Err(ApiError::NotFound("Virtual crop does not exist"))
     }
 }
 
@@ -207,34 +203,34 @@ async fn put_pot_handler(
         let pot = existing.read().await;
         if !pot.config.managed {
             return Err(ApiError::Conflict(
-                "Ese cultivo está definido en SIMULATOR_DEVICES",
+                "This crop is defined in SIMULATOR_DEVICES",
             ));
         }
     }
 
     if payload.key.len() < 16 || payload.key.len() > 128 {
         return Err(ApiError::UnprocessableEntity(
-            "La clave debe tener entre 16 y 128 caracteres".to_string(),
+            "Key must be between 16 and 128 characters".to_string(),
         ));
     }
 
     let crop_type_regex = Regex::new(r"^[A-Z_]{3,20}$").unwrap();
     if !crop_type_regex.is_match(&payload.crop_type) {
         return Err(ApiError::UnprocessableEntity(
-            "cropType debe contener entre 3 y 20 mayúsculas o guiones bajos".to_string(),
+            "cropType must contain 3 to 20 uppercase letters or underscores".to_string(),
         ));
     }
 
     if payload.interval_seconds < 10.0 || payload.interval_seconds > 300.0 {
         return Err(ApiError::UnprocessableEntity(
-            "intervalSeconds debe estar entre 10 y 300".to_string(),
+            "intervalSeconds must be between 10 and 300".to_string(),
         ));
     }
 
     if let Some(ref s) = payload.setting {
         if s != "INDOOR" && s != "OUTDOOR" {
             return Err(ApiError::UnprocessableEntity(
-                "setting debe ser INDOOR u OUTDOOR".to_string(),
+                "setting must be INDOOR or OUTDOOR".to_string(),
             ));
         }
     }
@@ -242,7 +238,7 @@ async fn put_pot_handler(
     if let Some(ref e) = payload.exposure {
         if e != "FULL_SUN" && e != "PARTIAL_SUN" && e != "SHADE" {
             return Err(ApiError::UnprocessableEntity(
-                "exposure debe ser FULL_SUN, PARTIAL_SUN o SHADE".to_string(),
+                "exposure must be FULL_SUN, PARTIAL_SUN, or SHADE".to_string(),
             ));
         }
     }
@@ -311,7 +307,7 @@ async fn delete_pot_handler(
         let pot = existing.read().await;
         if !pot.config.managed {
             return Err(ApiError::Conflict(
-                "Ese cultivo está definido en SIMULATOR_DEVICES",
+                "This crop is defined in SIMULATOR_DEVICES",
             ));
         }
     }
@@ -334,14 +330,14 @@ async fn places_handler(
 
     if query.q.trim().len() < 2 || query.q.len() > 80 {
         return Err(ApiError::UnprocessableEntity(
-            "El parámetro 'q' debe tener entre 2 y 80 caracteres".to_string(),
+            "Parameter 'q' must be between 2 and 80 characters".to_string(),
         ));
     }
 
     match state.manager.weather_client.search(&query.q, 5).await {
         Ok(places) => Ok(Json(places)),
         Err(_) => Err(ApiError::BadGateway(
-            "No se pudo consultar el buscador de lugares",
+            "Could not query the geocoding service",
         )),
     }
 }
@@ -365,7 +361,7 @@ async fn weather_handler(
         || query.longitude > 180.0
     {
         return Err(ApiError::UnprocessableEntity(
-            "Coordenadas fuera de rango válido".to_string(),
+            "Coordinates out of valid range".to_string(),
         ));
     }
 
@@ -376,6 +372,6 @@ async fn weather_handler(
         .await
     {
         Ok(w) => Ok(Json(w)),
-        Err(_) => Err(ApiError::BadGateway("No se pudo consultar el clima")),
+        Err(_) => Err(ApiError::BadGateway("Could not query weather service")),
     }
 }

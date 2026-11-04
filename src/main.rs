@@ -47,14 +47,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     info!(
-        "Iniciando SmartPot DataGenerator v{}",
+        "Starting SmartPot DataGenerator v{}",
         smartpot_datagenerator::version()
     );
 
     let settings = match load() {
         Ok(s) => s,
         Err(err) => {
-            error!("Error cargando configuración: {err}");
+            error!("Error loading configuration: {err}");
             std::process::exit(1);
         }
     };
@@ -63,20 +63,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = Arc::new(PotManager::new(settings.clone(), weather_client));
 
     if let Err(err) = manager.load_static().await {
-        error!("Error cargando dispositivos estáticos: {err}");
+        error!("Error loading static devices: {err}");
         std::process::exit(1);
     }
 
     manager.start().await;
 
     let api_status = if settings.api_token.is_some() {
-        "activa"
+        "enabled"
     } else {
-        "deshabilitada (falta SIMULATOR_TOKEN)"
+        "disabled (missing SIMULATOR_TOKEN)"
     };
 
     info!(
-        "Simulador iniciado con {} cultivos fijos; API de control {}",
+        "Simulator started with {} static crops; control API {}",
         settings.devices.len(),
         api_status
     );
@@ -88,14 +88,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = create_router(state);
     let addr = SocketAddr::from(([0, 0, 0, 0], settings.api_port));
-    info!("API de control escuchando en http://{addr}");
+    info!("Control API listening on http://{addr}");
 
     let listener = TcpListener::bind(addr).await?;
 
     let shutdown_signal = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("Fallo al registrar manejador de señal Ctrl+C");
+            .expect("Failed to register Ctrl+C signal handler");
     };
 
     axum::serve(listener, app)
@@ -103,7 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     manager.stop().await;
-    info!("Simulador detenido");
+    info!("Simulator stopped");
 
     Ok(())
 }

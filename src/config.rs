@@ -35,7 +35,7 @@ pub fn parse_devices(raw: &str, required: bool) -> Result<Vec<DeviceConfig>, Str
         let parts: Vec<&str> = chunk.split(':').collect();
         if parts.len() != 3 || parts.iter().any(|p| p.trim().is_empty()) {
             return Err(format!(
-                "Dispositivo mal definido: «{chunk}». Usa cropId:clave:TIPO"
+                "Malformed device definition: '{chunk}'. Use cropId:key:TYPE"
             ));
         }
         devices.push(DeviceConfig {
@@ -47,7 +47,7 @@ pub fn parse_devices(raw: &str, required: bool) -> Result<Vec<DeviceConfig>, Str
 
     if devices.is_empty() && required {
         return Err(
-            "Define al menos un dispositivo en SIMULATOR_DEVICES o activa la API con SIMULATOR_TOKEN"
+            "Define at least one device in SIMULATOR_DEVICES or enable the API with SIMULATOR_TOKEN"
                 .to_string(),
         );
     }
@@ -68,7 +68,7 @@ pub fn load() -> Result<Settings, String> {
 
     if let Some(ref tok) = token {
         if tok.len() < 24 {
-            return Err("SIMULATOR_TOKEN debe tener al menos 24 caracteres".to_string());
+            return Err("SIMULATOR_TOKEN must be at least 24 characters long".to_string());
         }
     }
 

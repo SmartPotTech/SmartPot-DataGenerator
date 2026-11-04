@@ -130,7 +130,7 @@ impl SimulatedDevice {
                             let _ = root_cert_store.add(cert);
                         }
                     }
-                    Err(error) => warn!("No se pudo leer la CA {}: {}", ca_file, error),
+                    Err(error) => warn!("Could not read CA {}: {}", ca_file, error),
                 }
             } else {
                 for cert in rustls_native_certs::load_native_certs().certs {
@@ -162,25 +162,22 @@ impl SimulatedDevice {
                     Ok(Event::Incoming(Packet::ConnAck(connack))) => {
                         if connack.code == rumqttc::ConnectReturnCode::Success {
                             connected.store(true, Ordering::SeqCst);
-                            info!("Cultivo {crop_id} ({crop_type}) conectado");
+                            info!("Crop {crop_id} ({crop_type}) connected");
 
                             if let Err(e) = client
                                 .publish(&topics.status, QoS::AtLeastOnce, true, "online")
                                 .await
                             {
-                                warn!("Error publicando status online para {crop_id}: {e}");
+                                warn!("Error publishing online status for {crop_id}: {e}");
                             }
 
                             if let Err(e) =
                                 client.subscribe(&topics.commands, QoS::AtLeastOnce).await
                             {
-                                warn!("Error suscribiendo a commands para {crop_id}: {e}");
+                                warn!("Error subscribing to commands for {crop_id}: {e}");
                             }
                         } else {
-                            warn!(
-                                "Cultivo {crop_id} rechazado por el broker: {:?}",
-                                connack.code
-                            );
+                            warn!("Crop {crop_id} rejected by broker: {:?}", connack.code);
                         }
                     }
                     Ok(Event::Incoming(Packet::Publish(publish))) => {
@@ -202,7 +199,7 @@ impl SimulatedDevice {
                                         .publish(&topics.ack, QoS::AtLeastOnce, false, ack_json)
                                         .await
                                     {
-                                        warn!("Error publicando ACK para {crop_id}: {e}");
+                                        warn!("Error publishing ACK for {crop_id}: {e}");
                                     }
                                 }
 
@@ -217,7 +214,7 @@ impl SimulatedDevice {
                     Ok(_) => {}
                     Err(e) => {
                         connected.store(false, Ordering::SeqCst);
-                        warn!("Error en event_loop MQTT para {crop_id}: {e}");
+                        warn!("MQTT event_loop error for {crop_id}: {e}");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                 }
@@ -238,7 +235,7 @@ impl SimulatedDevice {
             Ok(c) => c,
             Err(_) => {
                 warn!(
-                    "Comando ilegible descartado: {}",
+                    "Unreadable command discarded: {}",
                     &payload[..payload.len().min(120)]
                 );
                 return None;
@@ -302,7 +299,7 @@ impl SimulatedDevice {
         let mut env = env_arc.write().await;
         let ack = match env.apply(actuator, action, cmd.duration_seconds, now) {
             Ok(msg) => {
-                info!("Cultivo {crop_id} ejecutó {msg}");
+                info!("Crop {crop_id} executed {msg}");
                 CommandAck {
                     id: cmd_id,
                     status: "EXECUTED".to_string(),
@@ -370,7 +367,7 @@ impl SimulatedDevice {
                         .await
                     {
                         warn!(
-                            "Error publicando telemetría binaria para {}: {e}",
+                            "Error publishing binary telemetry for {}: {e}",
                             self.device.crop_id
                         );
                     } else {
@@ -383,7 +380,7 @@ impl SimulatedDevice {
                         .await
                     {
                         warn!(
-                            "Error publicando telemetría para {}: {e}",
+                            "Error publishing telemetry for {}: {e}",
                             self.device.crop_id
                         );
                     } else {

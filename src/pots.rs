@@ -114,22 +114,22 @@ impl PotManager {
 
     pub async fn upsert(&self, config: PotConfig) -> Result<Arc<RwLock<VirtualPot>>, String> {
         if config.mode != "AUTO" && config.mode != "MANUAL" && config.mode != "WEATHER" {
-            return Err(format!("Modo desconocido: {}", config.mode));
+            return Err(format!("Unknown mode: {}", config.mode));
         }
 
         if config.mode == "WEATHER" && config.location.is_none() {
-            return Err("El modo clima necesita una ubicación".to_string());
+            return Err("Weather mode requires a location".to_string());
         }
 
         if let Some(ref s) = config.setting {
             if s != "INDOOR" && s != "OUTDOOR" {
-                return Err(format!("Lugar desconocido: {s}"));
+                return Err(format!("Unknown setting: {s}"));
             }
         }
 
         if let Some(ref e) = config.exposure {
             if e != "FULL_SUN" && e != "PARTIAL_SUN" && e != "SHADE" {
-                return Err(format!("Exposición desconocida: {e}"));
+                return Err(format!("Unknown exposure: {e}"));
             }
         }
 
@@ -184,7 +184,7 @@ impl PotManager {
                 let pot = Arc::new(RwLock::new(VirtualPot::new(config.clone(), device)));
                 pots.insert(config.crop_id.clone(), Arc::clone(&pot));
                 info!(
-                    "Cultivo virtual {} ({}) en modo {}",
+                    "Virtual crop {} ({}) in {} mode",
                     config.crop_id, config.crop_type, config.mode
                 );
                 (pot, None)
@@ -225,7 +225,7 @@ impl PotManager {
             let pot = Arc::new(RwLock::new(VirtualPot::new(config.clone(), device)));
             pots.insert(config.crop_id.clone(), Arc::clone(&pot));
             info!(
-                "Cultivo virtual {} ({}) en modo {}",
+                "Virtual crop {} ({}) in {} mode",
                 config.crop_id, config.crop_type, config.mode
             );
             (pot, None)
@@ -279,7 +279,7 @@ impl PotManager {
         if let Some(pot) = pots.remove(crop_id) {
             let mut p = pot.write().await;
             p.device.stop().await;
-            info!("Cultivo virtual {crop_id} retirado");
+            info!("Virtual crop {crop_id} removed");
             true
         } else {
             false
@@ -318,10 +318,9 @@ impl PotManager {
                 pot.weather_error = None;
             }
             Err(e) => {
-                pot.weather_error = Some(
-                    "No se pudo consultar el clima; se usa el último dato conocido.".to_string(),
-                );
-                warn!("Clima no disponible para {}: {}", loc.name, e);
+                pot.weather_error =
+                    Some("Could not fetch weather; using last known reading.".to_string());
+                warn!("Weather unavailable for {}: {}", loc.name, e);
             }
         }
     }

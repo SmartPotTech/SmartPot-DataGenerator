@@ -110,7 +110,7 @@ impl Environment {
                 self.mode = mode.to_string();
                 Ok(())
             }
-            other => Err(format!("Modo desconocido: {other}")),
+            other => Err(format!("Unknown mode: {other}")),
         }
     }
 
@@ -121,12 +121,12 @@ impl Environment {
     ) -> Result<(), String> {
         if let Some(ref s) = setting {
             if s != "INDOOR" && s != "OUTDOOR" {
-                return Err(format!("Lugar desconocido: {s}"));
+                return Err(format!("Unknown setting: {s}"));
             }
         }
         if let Some(ref e) = exposure {
             if e != "FULL_SUN" && e != "PARTIAL_SUN" && e != "SHADE" {
-                return Err(format!("Exposición desconocida: {e}"));
+                return Err(format!("Unknown exposure: {e}"));
             }
         }
         self.setting = setting;
@@ -180,11 +180,11 @@ impl Environment {
         duration: Option<u64>,
         now: f64,
     ) -> Result<String, String> {
-        let (name, ending) = actuator.description();
+        let name = actuator.description();
 
         if action == Action::Deactivate {
             self.active.remove(&actuator);
-            return Ok(format!("{name} apagad{ending}"));
+            return Ok(format!("{name} turned off"));
         }
 
         let dur = if actuator.is_doser() {
@@ -209,8 +209,8 @@ impl Environment {
         }
 
         let msg = match dur {
-            Some(d) if d > 0 => format!("{name} encendid{ending} por {}", readable_duration(d)),
-            _ => format!("{name} encendid{ending}"),
+            Some(d) if d > 0 => format!("{name} turned on for {}", readable_duration(d)),
+            _ => format!("{name} turned on"),
         };
 
         Ok(msg)

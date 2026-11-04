@@ -27,7 +27,7 @@ fn test_readings_stay_inside_the_sensor_scale() {
         let (low, high) = get_limits(&name);
         assert!(
             val >= low && val <= high,
-            "Sensor {name} fuera de escala: {val} no está en [{low}, {high}]"
+            "Sensor {name} out of scale: {val} not in [{low}, {high}]"
         );
     }
 }
@@ -39,10 +39,7 @@ fn test_water_pump_raises_soil_moisture() {
     let _ = env.apply(Actuator::WaterPump, Action::Activate, Some(20), NOON);
     advance(&mut env, 1, NOON, 30.0);
     let moisture = env.state.get("soilMoisture").copied().unwrap();
-    assert!(
-        moisture > 45.0,
-        "La humedad esperada > 45, obtenida: {moisture}"
-    );
+    assert!(moisture > 45.0, "Expected moisture > 45, got: {moisture}");
 }
 
 #[test]
@@ -58,7 +55,7 @@ fn test_fan_cools_the_air() {
     let temp_without = without_fan.state.get("temperature").copied().unwrap();
     assert!(
         temp_with < temp_without,
-        "{temp_with} no es menor que {temp_without}"
+        "{temp_with} is not lower than {temp_without}"
     );
 }
 
@@ -78,7 +75,7 @@ fn test_uv_light_adds_light_at_night() {
     let lit = env.state.get("brightness").copied().unwrap();
     assert!(
         lit > dark + 300.0,
-        "Brillo lit ({lit}) debería ser > dark ({dark}) + 300"
+        "Lit brightness ({lit}) should be > dark ({dark}) + 300"
     );
 }
 
@@ -101,7 +98,7 @@ fn test_an_actuator_without_duration_stays_on_until_turned_off() {
     let msg = env
         .apply(Actuator::Fan, Action::Activate, None, NOON)
         .unwrap();
-    assert_eq!(msg, "Ventilador encendido");
+    assert_eq!(msg, "Fan turned on");
     assert!(env.is_active(Actuator::Fan, NOON + 5.0 * 3600.0));
 
     let active = env.active_actuators(NOON + 5.0 * 3600.0);
@@ -121,17 +118,17 @@ fn test_acknowledgements_read_durations_like_a_person() {
     assert_eq!(
         env.apply(Actuator::WaterPump, Action::Activate, Some(15), NOON)
             .unwrap(),
-        "Bomba de agua encendida por 15 s"
+        "Water pump turned on for 15 s"
     );
     assert_eq!(
         env.apply(Actuator::Fan, Action::Activate, Some(600), NOON)
             .unwrap(),
-        "Ventilador encendido por 10 min"
+        "Fan turned on for 10 min"
     );
     assert_eq!(
         env.apply(Actuator::UvLight, Action::Activate, Some(7200), NOON)
             .unwrap(),
-        "Luz ultravioleta encendida por 2 h"
+        "UV light turned on for 2 h"
     );
 }
 
@@ -142,7 +139,7 @@ fn test_a_doser_without_duration_releases_one_dose() {
     let msg = env
         .apply(Actuator::PhDoser, Action::Activate, None, NOON)
         .unwrap();
-    assert_eq!(msg, "Dosificador de pH encendido por 3 s");
+    assert_eq!(msg, "pH doser turned on for 3 s");
     let after = env.state.get("ph").copied().unwrap();
     assert!((after - (before - 0.36)).abs() < 1e-4);
     assert!(!env.is_active(Actuator::PhDoser, NOON + 4.0));
@@ -160,7 +157,7 @@ fn test_daylight_follows_the_local_time_zone() {
     let b_utc = utc.state.get("brightness").copied().unwrap();
     assert!(
         b_local > b_utc + 300.0,
-        "{b_local} debería ser > {b_utc} + 300"
+        "{b_local} should be > {b_utc} + 300"
     );
 }
 
@@ -192,7 +189,7 @@ fn test_placement_filters_the_weather() {
         is_day: true,
         code: 0,
         condition: "CLEAR".to_string(),
-        label: "Despejado".to_string(),
+        label: "Clear".to_string(),
         observed_at: "".to_string(),
     };
 

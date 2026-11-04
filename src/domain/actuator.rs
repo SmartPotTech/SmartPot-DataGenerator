@@ -26,15 +26,15 @@ impl Actuator {
         }
     }
 
-    /// Nombre amigable en español y desinencia de género ("a" u "o").
-    pub fn description(&self) -> (&'static str, &'static str) {
+    /// Nombre legible en inglés para confirmaciones ACK.
+    pub fn description(&self) -> &'static str {
         match self {
-            Actuator::WaterPump => ("Bomba de agua", "a"),
-            Actuator::UvLight => ("Luz ultravioleta", "a"),
-            Actuator::Fan => ("Ventilador", "o"),
-            Actuator::Humidifier => ("Humidificador", "o"),
-            Actuator::NutrientDoser => ("Dosificador de nutrientes", "o"),
-            Actuator::PhDoser => ("Dosificador de pH", "o"),
+            Actuator::WaterPump => "Water pump",
+            Actuator::UvLight => "UV light",
+            Actuator::Fan => "Fan",
+            Actuator::Humidifier => "Humidifier",
+            Actuator::NutrientDoser => "Nutrient doser",
+            Actuator::PhDoser => "pH doser",
         }
     }
 
@@ -61,7 +61,7 @@ impl FromStr for Actuator {
             "HUMIDIFIER" => Ok(Actuator::Humidifier),
             "NUTRIENT_DOSER" => Ok(Actuator::NutrientDoser),
             "PH_DOSER" => Ok(Actuator::PhDoser),
-            other => Err(format!("El actuador {other} no existe en este cultivo")),
+            other => Err(format!("Actuator {other} does not exist on this crop")),
         }
     }
 }
@@ -79,7 +79,7 @@ impl FromStr for Action {
         match s.trim().to_ascii_uppercase().as_str() {
             "ACTIVATE" => Ok(Action::Activate),
             "DEACTIVATE" => Ok(Action::Deactivate),
-            other => Err(format!("Acción desconocida: {other}")),
+            other => Err(format!("Unknown action: {other}")),
         }
     }
 }
