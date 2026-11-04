@@ -4,13 +4,86 @@
 [![Publish Docker Images](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/packaging.yml/badge.svg)](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/packaging.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-00B074.svg)](LICENSE)
 
+[English](#english) | [Español](#español)
+
+---
+
+## English
+
+Virtual hydroponic crop and device simulator for the **SmartPot** platform, rewritten in **Rust** for maximum performance, garbage-collection-free memory safety, and high-efficiency asynchronous concurrency.
+
+It speaks the SmartPot **MQTT v1** contract identically to a physical ESP32 device, and exposes a constant-time protected internal REST API for dynamic runtime crop management.
+
+### Key Features
+
+- **Extreme Performance & Efficiency**: Built on the **Tokio** async runtime and **Axum 0.8**, with a memory footprint under 15 MB RAM and sub-millisecond response times.
+- **Strict Memory Safety**: `#![deny(unsafe_code)]` across the entire project. Zero raw pointers or `unsafe` blocks.
+- **Side-Channel Protection**: Validates the service token (`SIMULATOR_TOKEN`) using constant-time comparison (`subtle::ConstantTimeEq`) to prevent timing attacks.
+- **Strict MQTT v1 Contract**:
+  - `smartpot/v1/{cropId}/telemetry`: Periodic QoS 0 publication with physical readings and realistic Gaussian noise (or 27-byte compact binary v2).
+  - `smartpot/v1/{cropId}/commands`: Receives and executes actuator commands (`WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER`, `PH_DOSER`).
+  - `smartpot/v1/{cropId}/commands/ack`: Immediate QoS 1 acknowledgement with readable status messages in English.
+  - `smartpot/v1/{cropId}/status`: Retained QoS 1 status with LWT (`online`/`offline`).
+- **Continuous Physical Simulation**:
+  - Modes: `AUTO` (circadian day/night cycle by time zone), `MANUAL` (configurable gauges), and `WEATHER` (real-world weather integration).
+  - Environmental filtering by placement (`INDOOR` / `OUTDOOR`) and solar exposure (`FULL_SUN`, `PARTIAL_SUN`, `SHADE`).
+  - Actuator dynamics: cooling, humidification, light radiation, irrigation, evaporation, and chemical dosing.
+- **Open-Meteo Integration**: In-memory cache with 10-minute TTL and geographic grid resolution for keyless geocoding and weather forecasts.
+- **Minimal & Hardened Container**: Multi-stage image on `debian:bookworm-slim` without privileges (`uid: 1000`, `cap_drop: ALL`, `read_only: true`) and built-in native healthcheck (`--healthcheck`).
+
+### Environment Variables
+
+| Variable                     | Type    | Default                    | Description                                                                   |
+|------------------------------|---------|----------------------------|-------------------------------------------------------------------------------|
+| `MQTT_HOST`                  | String  | `localhost`                | MQTT broker host (e.g., `broker-smartpot` or `mqtt.smartpot.app`).            |
+| `MQTT_PORT`                  | Integer | `1883` (or `8883` w/ TLS)  | MQTT connection port.                                                         |
+| `MQTT_TLS`                   | Boolean | `false`                    | Enables TLS for the broker connection.                                        |
+| `MQTT_CA_FILE`               | String  | Empty                      | Path to PEM CA certificate (optional).                                        |
+| `MQTT_TOPIC_PREFIX`          | String  | `smartpot/v1`              | MQTT topic prefix.                                                            |
+| `SIMULATOR_DEVICES`          | String  | Empty                      | Protected static devices formatted as comma-separated `cropId:key:TYPE`.      |
+| `SIMULATOR_INTERVAL_SECONDS` | Float   | `30`                       | Base telemetry publication interval in seconds.                               |
+| `SIMULATOR_UTC_OFFSET`       | Float   | `-5`                       | UTC hour offset for the solar cycle.                                          |
+| `SIMULATOR_TOKEN`            | String  | Empty                      | Bearer token for the control API (minimum 24 characters).                     |
+| `SIMULATOR_PORT`             | Integer | `8081`                     | Internal HTTP control API port.                                               |
+| `SIMULATOR_PAYLOAD_FORMAT`   | String  | `json`                     | Telemetry format: `json` (contract v1) or `binary` (27-byte compact v2).      |
+| `RUST_LOG`                   | String  | `info`                     | Structured log level (`error`, `warn`, `info`, `debug`, `trace`).             |
+
+### Control REST API
+
+The API listens on port `8081` (configurable via `SIMULATOR_PORT`).
+
+- `GET /health`: Public. Container health check and connected crop count.
+- `GET /v1/pots`: Requires `Authorization: Bearer <TOKEN>`. Lists full snapshots of all simulated crops.
+- `GET /v1/pots/{crop_id}`: Requires Bearer. Returns the snapshot of the specified crop (or 404).
+- `PUT /v1/pots/{crop_id}`: Requires Bearer. Creates or updates a dynamic virtual crop. Returns 409 if the crop is static in `SIMULATOR_DEVICES`.
+- `DELETE /v1/pots/{crop_id}`: Requires Bearer. Stops and removes a dynamic virtual crop (204 No Content).
+- `GET /v1/places?q={name}`: Requires Bearer. Geographic place search via geocoding.
+- `GET /v1/weather?latitude={lat}&longitude={lon}`: Requires Bearer. Queries current weather for the given coordinates.
+
+### One-Command Deployment
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo-beta/compose.yaml | docker compose -f - up -d --wait
+```
+
+### Build and Test
+
+```bash
+cargo check
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo run
+```
+
+---
+
+## Español
+
 Simulador de cultivos y dispositivos hidropónicos virtuales para la plataforma **SmartPot**, reescrito en **Rust** para máximo rendimiento, seguridad de memoria sin recolector de basura (*garbage collection*) y concurrencia asíncrona de alta eficiencia.
 
 Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo físico ESP32, y expone una API REST interna protegida con tiempo constante (*constant-time comparison*) para administración dinámica de cultivos en tiempo de ejecución.
 
----
-
-## Características principales
+### Características principales
 
 - **Rendimiento y eficiencia extrema**: Implementado sobre el runtime asíncrono **Tokio** y el framework web **Axum 0.8**, con una huella de memoria inferior a 15 MB RAM y tiempos de respuesta sub-milisegundo.
 - **Seguridad de memoria estricta**: `#![deny(unsafe_code)]` en todo el proyecto. Sin punteros crudos ni bloques `unsafe`.
@@ -18,7 +91,7 @@ Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo f
 - **Contrato MQTT v1 estricto**:
   - `smartpot/v1/{cropId}/telemetry`: Publicación periódica QoS 0 con lecturas físicas y ruido gaussiano realista.
   - `smartpot/v1/{cropId}/commands`: Recepción y ejecución de órdenes a actuadores (`WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER`, `PH_DOSER`).
-  - `smartpot/v1/{cropId}/commands/ack`: Confirmación inmediata QoS 1 con mensajes legibles en español.
+  - `smartpot/v1/{cropId}/commands/ack`: Confirmación inmediata QoS 1 con mensajes legibles en inglés.
   - `smartpot/v1/{cropId}/status`: Estado retenido (*retained*) QoS 1 con LWT (*Last Will and Testament*) `online`/`offline`.
 - **Simulación física continua**:
   - Modos: `AUTO` (ciclo circadiano día/noche según zona horaria), `MANUAL` (medidores configurables) y `WEATHER` (integración con el clima real).
@@ -27,9 +100,7 @@ Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo f
 - **Integración con Open-Meteo**: Caché en memoria con TTL de 10 minutos y resolución por cuadrícula geográfica para geocodificación y pronósticos meteorológicos sin claves ni cuotas.
 - **Contenedor seguro y mínimo**: Imagen multi-etapa basada en `debian:bookworm-slim` sin privilegios (`uid: 1000`, `cap_drop: ALL`, `read_only: true`) y healthcheck nativo integrado (`--healthcheck`).
 
----
-
-## Variables de entorno
+### Variables de entorno
 
 | Variable | Tipo | Por defecto | Descripción |
 | --- | --- | --- | --- |
@@ -43,15 +114,12 @@ Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo f
 | `SIMULATOR_UTC_OFFSET` | Float | `-5` | Diferencia horaria respecto a UTC para el ciclo solar. |
 | `SIMULATOR_TOKEN` | String | Vacío | Token Bearer para la API de control (mínimo 24 caracteres). |
 | `SIMULATOR_PORT` | Entero | `8081` | Puerto de escucha de la API HTTP interna. |
+| `SIMULATOR_PAYLOAD_FORMAT` | String | `json` | Formato de telemetría: `json` (contrato v1) o `binary` (compacto v2 de 27 bytes). |
 | `RUST_LOG` | String | `info` | Nivel de logs estructurados (`error`, `warn`, `info`, `debug`, `trace`). |
 
----
-
-## API REST de Control
+### API REST de Control
 
 La API escucha en el puerto `8081` (configurable vía `SIMULATOR_PORT`).
-
-### Endpoints
 
 - `GET /health`: Público. Chequeo de salud del contenedor y estado de cultivos conectados.
 - `GET /v1/pots`: Requiere `Authorization: Bearer <TOKEN>`. Lista el estado completo de todos los cultivos simulados.
@@ -61,57 +129,22 @@ La API escucha en el puerto `8081` (configurable vía `SIMULATOR_PORT`).
 - `GET /v1/places?q={nombre}`: Requiere Bearer. Búsqueda de lugares geográficos mediante geocodificación.
 - `GET /v1/weather?latitude={lat}&longitude={lon}`: Requiere Bearer. Consulta el clima actual para las coordenadas dadas.
 
----
-
-## Despliegue en un comando
-
-La imagen es pública: `ghcr.io/smartpottech/smartpot-datagenerator-rust`. La plataforma completa, con este servicio incluido, se
-levanta con un solo comando y sin descargar el código:
+### Despliegue en un comando
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo-beta/compose.yaml | docker compose -f - up -d --wait
 ```
 
-Abre http://localhost:5173 e ingresa con `demo@smartpot.app` / `SmartPot2026`. Se detiene con
-`docker compose -p smartpot-demo-beta down` (con `-v` borra también los datos). Más detalle en la
-[demo beta](https://github.com/SmartPotTech/.github/tree/main/docker/demo-beta).
-
-## Desarrollo y pruebas
-
-### Requisitos
-
-- Rust estable con soporte para la edición 2024 (1.85 o superior)
-- Cargo
-
 ### Compilación y pruebas
 
 ```bash
-# Verificar tipos y compilación
 cargo check
-
-# Ejecutar las pruebas unitarias y de integración
 cargo test
-
-# Ejecutar el linter estricto
 cargo clippy --all-targets -- -D warnings
-
-# Ejecutar localmente
 cargo run
 ```
 
-### Imagen Docker
-
-```bash
-docker pull ghcr.io/smartpottech/smartpot-datagenerator-rust:latest
-```
-
----
-
-## Formatos de telemetría
+### Formatos de telemetría
 
 - **JSON del contrato v1** (por defecto): `{"temperature","humidity","brightness","ph","tds","atmosphere","soilMoisture"}`.
-- **Paquete compacto v2** de 27 bytes con `SIMULATOR_PAYLOAD_FORMAT=binary`, en el mismo tópico: magic `0x50`, versión,
-  secuencia, época, máscara de presencia por sensor, presión, luz de 32 bits y CRC-8. El formato está en
-  `SmartPot-API-Go/internal/mqtt/parser.go` y en la guía de migración (§15); la API acepta ambos.
-- Cada dispositivo simulado corre en su propia tarea de Tokio con su conexión MQTT.
-
+- **Paquete compacto v2** de 27 bytes con `SIMULATOR_PAYLOAD_FORMAT=binary`, en el mismo tópico: magic `0x50`, versión, secuencia, época, máscara de presencia por sensor, presión, luz de 32 bits y CRC-8.

@@ -1,16 +1,93 @@
 <!-- portada
-eyebrow: Documentación del componente
+eyebrow: Component Documentation · Documentación del componente
 titulo: SmartPot-DataGenerator-Rust
 acento: DataGenerator-Rust
-subtitulo: El simulador de alto rendimiento de SmartPot en Rust
-bajada: Cultivos virtuales de alto rendimiento y bajo consumo que hablan el contrato MQTT v1: modelo físico, Tokio runtime, Axum 0.8, rumqttc, seguridad de memoria estricta y API de control interna.
+subtitulo: High-Performance SmartPot Simulator in Rust · El simulador de alto rendimiento de SmartPot en Rust
+bajada: High-performance, low-memory virtual crops speaking the MQTT v1 contract: physical model, Tokio runtime, Axum 0.8, rumqttc, strict memory safety, and internal control API. / Cultivos virtuales de alto rendimiento y bajo consumo que hablan el contrato MQTT v1: modelo físico, Tokio runtime, Axum 0.8, rumqttc, seguridad de memoria estricta y API de control interna.
 documento: SmartPot-DataGenerator-Rust
-version: 2.0 · octubre 2026
+version: 2.0 · October 2026 / octubre 2026
 equipo: SmartPotTech
 proyecto: smartpot.app
 -->
 
 # SmartPot-DataGenerator-Rust
+
+[English](#english) | [Español](#español)
+
+---
+
+# English
+
+## Document Sheet
+
+| Field              | Value                                                                                                                               |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| Project            | SmartPot · [smartpot.app](https://smartpot.app)                                                                                     |
+| Component          | [SmartPot-DataGenerator-Rust](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust)                                          |
+| Version            | 2.0.0 · October 2026                                                                                                                |
+| Language & Runtime | Rust 1.85+ · Tokio · Axum 0.8 · rumqttc                                                                                             |
+| Scope              | Virtual crops, static demo/QA crops, agronomic physical model, internal REST control API, memory safety, tests, and deployment      |
+| Status             | Migrated and validated in `demo-beta`                                                                                               |
+
+---
+
+## 1. Purpose and Migration Motivation
+
+### In Simple Terms
+
+The simulator brings **virtual crops** to life: crops that a user creates in SmartPot without physical hardware. It runs continuously as a platform support service and performs the exact same job as a physical ESP32 microcontroller:
+1. Publishes periodic telemetry over MQTT using the crop's credentials.
+2. Listens for actuator commands and executes them on the physical model.
+3. Responds immediately with readable acknowledgements (*ACK*) over MQTT.
+4. Maintains the retained connection status (`online` / `offline`) via LWT.
+
+The rewrite in **Rust** introduces:
+- **Zero-cost abstractions** and cooperative concurrency on Tokio: memory footprint < 15 MB RAM.
+- **Strict memory safety** with `#![deny(unsafe_code)]`.
+- **Timing attack protection** using `subtle::ConstantTimeEq` to validate the Bearer token.
+- **Built-in native healthcheck** in the binary (`--healthcheck`), eliminating shell or external tool dependencies inside the container.
+
+---
+
+## 2. Internal Architecture
+
+The component is divided into decoupled modular layers:
+
+1. **Configuration (`config.rs`)**: Loads and validates environment variables (`Settings`, `DeviceConfig`).
+2. **Agronomic Domain (`domain/`)**:
+   - `crop.rs`: Baseline species profiles (Lettuce, Tomato, Strawberry, Basil, Spinach, Pepper).
+   - `limits.rs`: Physical sensor measurement bounds and clamping functions.
+   - `actuator.rs`: Actuator types and human-readable durations ("15 s", "10 min", "2 h").
+   - `environment.rs`: Physical simulation engine with target calculation, exponential relaxation, evaporation, irrigation, and Gaussian noise.
+   - `weather.rs`: Open-Meteo client with WMO code mapping and 10-minute TTL in-memory geographic grid cache.
+3. **Simulated Device (`device.rs`)**: MQTT client connection via `rumqttc`, async event loop, command subscription, and telemetry publication (JSON v1 and 27-byte compact binary v2).
+4. **Crop Manager (`pots.rs`)**: `PotManager` manages `Arc<RwLock<VirtualPot>>`, orchestrates the publication clock, and interacts with the weather service.
+5. **HTTP Control API (`api.rs`)**: Axum server with `/health`, `/v1/pots`, `/v1/places`, and `/v1/weather` routes, protected by constant-time Bearer authentication.
+
+---
+
+## 3. Physical Simulation Model
+
+The physical engine in `Environment::step(seconds, now)` updates the hydroponic state variables:
+- **Temperature and humidity**: Smoothly relax toward the target environment; the fan (`FAN`) cools (-0.35°C/min) and dehumidifies (-1.5%/min); the humidifier (`HUMIDIFIER`) adds moisture (+2.5%/min).
+- **Sunlight and artificial light**: In `AUTO` mode, follows a day/night sinusoidal curve with UTC offset. The UV lamp (`UV_LIGHT`) adds light radiation (+900 lx) and a slight thermal increase.
+- **Substrate moisture**: Models evaporation as a function of temperature and ambient drying factor, offset by water pump irrigation (`WATER_PUMP`, +1.2%/s) or outdoor rain.
+- **Chemical evolution**: pH dosing (`PH_DOSER`) lowers pH by 0.12 units per dosed second; the nutrient doser (`NUTRIENT_DOSER`) increases TDS by 70 ppm per dosed second.
+
+---
+
+## 4. Tests and Validation
+
+The component includes a comprehensive unit and integration test suite:
+- `tests/test_environment.rs` (11 tests): Sensor scale bounds, fan cooling,夜间 UV lighting, chemical dosing, and weather filtering by solar exposure.
+- `tests/test_device.rs` (5 tests): MQTT v1 contract, command validation, invalid command discarding, and device list parsing.
+- `tests/test_virtual_pots.rs` (7 tests): Weather scenes, coordinate cache, static crop protection, control API authorization, and full virtual crop CRUD lifecycle.
+
+All tests run in under 0.05 seconds in native Rust.
+
+---
+
+# Español
 
 ## Ficha del documento
 
@@ -56,7 +133,7 @@ El componente se divide en capas modulares desacopladas:
 2. **Dominio agronómico (`domain/`)**:
    - `crop.rs`: Perfiles basales de especies (Lechuga, Tomate, Fresa, Albahaca, Espinaca, Pimentón).
    - `limits.rs`: Límites de medición física de los sensores y funciones de acotamiento (*clamping*).
-   - `actuator.rs`: Tipos de actuadores, duraciones legibles ("15 s", "10 min", "2 h") y desinencias de género en español.
+   - `actuator.rs`: Tipos de actuadores y duraciones legibles ("15 s", "10 min", "2 h").
    - `environment.rs`: Motor de simulación física con cálculo de objetivos, relajación exponencial, evaporación, riego y ruido gaussiano.
    - `weather.rs`: Cliente Open-Meteo con mapeo de códigos WMO y caché geográfica en memoria por cuadrícula con TTL de 10 minutos.
 3. **Dispositivo simulado (`device.rs`)**: Conexión MQTT cliente mediante `rumqttc`, bucle de eventos asíncrono, suscripción a órdenes y publicación de telemetría.
@@ -82,4 +159,4 @@ El componente cuenta con una suite completa de pruebas unitarias e integración:
 - `tests/test_device.rs` (5 pruebas): Contrato MQTT v1, validación de comandos, descarte de comandos inválidos y parsing de listas de dispositivos.
 - `tests/test_virtual_pots.rs` (7 pruebas): Escenas climáticas, caché de coordenadas, protección de cultivos estáticos, autorización de la API de control y ciclo completo CRUD de cultivos virtuales.
 
-Todas las 23 pruebas corren en menos de 0.05 segundos en Rust nativo.
+Todas las pruebas corren en menos de 0.05 segundos en Rust nativo.
