@@ -1,16 +1,16 @@
 <!-- portada
 eyebrow: Component Documentation · Documentación del componente
-titulo: SmartPot-DataGenerator-Rust
-acento: DataGenerator-Rust
+titulo: SmartPot-DataGenerator
+acento: DataGenerator
 subtitulo: High-Performance SmartPot Simulator in Rust · El simulador de alto rendimiento de SmartPot en Rust
 bajada: High-performance, low-memory virtual crops speaking the MQTT v1 contract: physical model, Tokio runtime, Axum 0.8, rumqttc, strict memory safety, and internal control API. / Cultivos virtuales de alto rendimiento y bajo consumo que hablan el contrato MQTT v1: modelo físico, Tokio runtime, Axum 0.8, rumqttc, seguridad de memoria estricta y API de control interna.
-documento: SmartPot-DataGenerator-Rust
-version: 2.0 · October 2026 / octubre 2026
+documento: SmartPot-DataGenerator
+version: 2.0 · November 2026 / noviembre 2026
 equipo: SmartPotTech
 proyecto: smartpot.app
 -->
 
-# SmartPot-DataGenerator-Rust
+# SmartPot-DataGenerator
 
 [English](#english) | [Español](#español)
 
@@ -23,11 +23,11 @@ proyecto: smartpot.app
 | Field              | Value                                                                                                                               |
 |--------------------|-------------------------------------------------------------------------------------------------------------------------------------|
 | Project            | SmartPot · [smartpot.app](https://smartpot.app)                                                                                     |
-| Component          | [SmartPot-DataGenerator-Rust](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust)                                          |
-| Version            | 2.0.0 · October 2026                                                                                                                |
+| Component          | [SmartPot-DataGenerator](https://github.com/SmartPotTech/SmartPot-DataGenerator)                                          |
+| Version            | 2.0.0 · November 2026                                                                                                                |
 | Language & Runtime | Rust 1.85+ · Tokio · Axum 0.8 · rumqttc                                                                                             |
 | Scope              | Virtual crops, static demo/QA crops, agronomic physical model, internal REST control API, memory safety, tests, and deployment      |
-| Status             | Migrated and validated in `demo-beta`                                                                                               |
+| Status             | Canonical production simulator (Stack B). Legacy Python simulator archived at SmartPot-DataGenerator-Python                         |
 
 ---
 
@@ -94,11 +94,11 @@ All tests run in under 0.05 seconds in native Rust.
 | Campo | Valor |
 | --- | --- |
 | Proyecto | SmartPot · [smartpot.app](https://smartpot.app) |
-| Componente | [SmartPot-DataGenerator-Rust](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust) |
-| Versión | 2.0.0 · octubre 2026 |
+| Componente | [SmartPot-DataGenerator](https://github.com/SmartPotTech/SmartPot-DataGenerator) |
+| Versión | 2.0.0 · noviembre 2026 |
 | Lenguaje y runtime | Rust 1.85+ · Tokio · Axum 0.8 · rumqttc |
 | Alcance | Cultivos virtuales, cultivos fijos para demo y QA, modelo físico agronómico, API de control REST interna, seguridad de memoria, pruebas y despliegue |
-| Estado | Migrado y validado en `demo-beta` |
+| Estado | Simulador canónico en producción (Stack B). Implementación histórica en Python archivada en SmartPot-DataGenerator-Python |
 
 ---
 

@@ -1,7 +1,7 @@
-# SmartPot DataGenerator (Rust)
+# SmartPot-DataGenerator
 
-[![Rust CI](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/ci.yml/badge.svg)](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/ci.yml)
-[![Publish Docker Images](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/packaging.yml/badge.svg)](https://github.com/SmartPotTech/SmartPot-DataGenerator-Rust/actions/workflows/packaging.yml)
+[![Rust CI](https://github.com/SmartPotTech/SmartPot-DataGenerator/actions/workflows/ci.yml/badge.svg)](https://github.com/SmartPotTech/SmartPot-DataGenerator/actions/workflows/ci.yml)
+[![Publish Docker Images](https://github.com/SmartPotTech/SmartPot-DataGenerator/actions/workflows/packaging.yml/badge.svg)](https://github.com/SmartPotTech/SmartPot-DataGenerator/actions/workflows/packaging.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-00B074.svg)](LICENSE)
 
 [English](#english) | [Español](#español)
@@ -63,7 +63,7 @@ The API listens on port `8081` (configurable via `SIMULATOR_PORT`).
 ### One-Command Deployment
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo-beta/compose.yaml | docker compose -f - up -d --wait
+curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo/compose.yaml | docker compose -f - up -d --wait
 ```
 
 ### Build and Test
@@ -132,7 +132,7 @@ La API escucha en el puerto `8081` (configurable vía `SIMULATOR_PORT`).
 ### Despliegue en un comando
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo-beta/compose.yaml | docker compose -f - up -d --wait
+curl -fsSL https://raw.githubusercontent.com/SmartPotTech/.github/main/docker/demo/compose.yaml | docker compose -f - up -d --wait
 ```
 
 ### Compilación y pruebas
