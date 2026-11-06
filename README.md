@@ -24,8 +24,10 @@ It speaks the SmartPot **MQTT v1** contract identically to a physical ESP32 devi
   - `smartpot/v1/{cropId}/commands`: Receives and executes actuator commands (`WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER`, `PH_DOSER`).
   - `smartpot/v1/{cropId}/commands/ack`: Immediate QoS 1 acknowledgement with readable status messages in English.
   - `smartpot/v1/{cropId}/status`: Retained QoS 1 status with LWT (`online`/`offline`).
+  - `smartpot/v1/{cropId}/capabilities`: Retained QoS 1 declaration with the **Audit_06 schema 1** payload, published after `status=online` and before subscribing to commands. It reports the firmware, virtual hardware, telemetry formats, the seven sensor ranges, and the six actuators; a publish failure never aborts the command subscription.
 - **Continuous Physical Simulation**:
   - Modes: `AUTO` (circadian day/night cycle by time zone), `MANUAL` (configurable gauges), and `WEATHER` (real-world weather integration).
+  - In `MANUAL` mode the soil moisture holds its configured setpoint: evaporation is not applied, the water pump or rain can push it above the setpoint, and it then relaxes gently back to that value.
   - Environmental filtering by placement (`INDOOR` / `OUTDOOR`) and solar exposure (`FULL_SUN`, `PARTIAL_SUN`, `SHADE`).
   - Actuator dynamics: cooling, humidification, light radiation, irrigation, evaporation, and chemical dosing.
 - **Open-Meteo Integration**: In-memory cache with 10-minute TTL and geographic grid resolution for keyless geocoding and weather forecasts.
@@ -75,6 +77,11 @@ cargo clippy --all-targets -- -D warnings
 cargo run
 ```
 
+### Telemetry Formats
+
+- **JSON v1** (default): `{"temperature","humidity","brightness","ph","tds","atmosphere","soilMoisture"}`.
+- **27-byte compact v2** with `SIMULATOR_PAYLOAD_FORMAT=binary`, on the same topic: magic `0x50`, version, sequence, epoch, per-sensor presence mask, pressure, 32-bit light and CRC-8.
+
 ---
 
 ## Español
@@ -89,12 +96,14 @@ Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo f
 - **Seguridad de memoria estricta**: `#![deny(unsafe_code)]` en todo el proyecto. Sin punteros crudos ni bloques `unsafe`.
 - **Protección contra ataques de canal lateral**: Validación del token de servicio (`SIMULATOR_TOKEN`) mediante comparación en tiempo constante (`subtle::ConstantTimeEq`) para prevenir *timing attacks*.
 - **Contrato MQTT v1 estricto**:
-  - `smartpot/v1/{cropId}/telemetry`: Publicación periódica QoS 0 con lecturas físicas y ruido gaussiano realista.
+  - `smartpot/v1/{cropId}/telemetry`: Publicación periódica QoS 0 con lecturas físicas y ruido gaussiano realista (o paquete binario compacto v2 de 27 bytes).
   - `smartpot/v1/{cropId}/commands`: Recepción y ejecución de órdenes a actuadores (`WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER`, `PH_DOSER`).
   - `smartpot/v1/{cropId}/commands/ack`: Confirmación inmediata QoS 1 con mensajes legibles en inglés.
   - `smartpot/v1/{cropId}/status`: Estado retenido (*retained*) QoS 1 con LWT (*Last Will and Testament*) `online`/`offline`.
+  - `smartpot/v1/{cropId}/capabilities`: Declaración retenida QoS 1 con la carga del **esquema 1 de Audit_06**, publicada después de `status=online` y antes de suscribirse a comandos. Informa el firmware, el hardware virtual, los formatos de telemetría, los rangos de los siete sensores y los seis actuadores; un fallo al publicar nunca cancela la suscripción a comandos.
 - **Simulación física continua**:
   - Modos: `AUTO` (ciclo circadiano día/noche según zona horaria), `MANUAL` (medidores configurables) y `WEATHER` (integración con el clima real).
+  - En modo `MANUAL` la humedad del sustrato conserva su punto de ajuste: no se aplica evaporación, la bomba de agua o la lluvia pueden empujarla por encima y después vuelve suavemente a ese valor.
   - Filtrado ambiental por ubicación (`INDOOR` / `OUTDOOR`) y exposición solar (`FULL_SUN`, `PARTIAL_SUN`, `SHADE`).
   - Dinámica de actuadores: enfriamiento, humidificación, radiación de luz, riego, evaporación y dosificación química.
 - **Integración con Open-Meteo**: Caché en memoria con TTL de 10 minutos y resolución por cuadrícula geográfica para geocodificación y pronósticos meteorológicos sin claves ni cuotas.

@@ -12,9 +12,10 @@ flowchart TD
     targets["Cálculo de objetivos ambientales (_targets)"]
     relax["Relajación hacia objetivo (temperatura, humedad, luz, presión)"]
     push["Impulso activo (enfriamiento ventilador, humedad humidificador)"]
-    evap["Evaporación de sustrato (f(temp, secado))"]
+    evap["Evaporación de sustrato (AUTO/WEATHER)"]
     irrig["Riego bomba + lluvia"]
     chem["Evolución química de pH y TDS"]
+    hold["MANUAL: sin evaporación<br/>conserva el punto de ajuste<br/>y relaja tras el riego"]
   end
 
   subgraph State["Estado del cultivo y lectura"]
@@ -30,6 +31,8 @@ flowchart TD
   relax & push --> crop_state
   crop_state --> evap & irrig & chem
   evap & irrig & chem --> crop_state
+  mode -->|"MANUAL"| hold
+  hold --> crop_state
   crop_state --> noise --> clamping --> telemetry
 
   classDef leaf fill:#DDF5EA,stroke:#067A52,color:#17261F
@@ -38,5 +41,5 @@ flowchart TD
   classDef clay fill:#FBE9E1,stroke:#B85A38,color:#17261F
   classDef core fill:#067A52,stroke:#0B3D2B,color:#FFFFFF
   class Inputs water
-  class targets,relax,push,evap,irrig,chem sun
+  class targets,relax,push,evap,irrig,chem,hold sun
   class crop_state,noise,clamping,telemetry leaf

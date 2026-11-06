@@ -26,7 +26,7 @@ proyecto: smartpot.app
 | Component          | [SmartPot-DataGenerator](https://github.com/SmartPotTech/SmartPot-DataGenerator)                                          |
 | Version            | 2.0.0 · November 2026                                                                                                                |
 | Language & Runtime | Rust 1.85+ · Tokio · Axum 0.8 · rumqttc                                                                                             |
-| Scope              | Virtual crops, static demo/QA crops, agronomic physical model, internal REST control API, memory safety, tests, and deployment      |
+| Scope              | Virtual crops, static demo/QA crops, agronomic physical model, MQTT capabilities, internal REST control API, memory safety, tests, and deployment |
 | Status             | Canonical production simulator (Stack B). Legacy Python simulator archived at SmartPot-DataGenerator-Python                         |
 
 ---
@@ -60,9 +60,11 @@ The component is divided into decoupled modular layers:
    - `actuator.rs`: Actuator types and human-readable durations ("15 s", "10 min", "2 h").
    - `environment.rs`: Physical simulation engine with target calculation, exponential relaxation, evaporation, irrigation, and Gaussian noise.
    - `weather.rs`: Open-Meteo client with WMO code mapping and 10-minute TTL in-memory geographic grid cache.
-3. **Simulated Device (`device.rs`)**: MQTT client connection via `rumqttc`, async event loop, command subscription, and telemetry publication (JSON v1 and 27-byte compact binary v2).
+3. **Simulated Device (`device.rs`)**: MQTT client connection via `rumqttc`, async event loop, retained capabilities publication, command subscription, and telemetry publication (JSON v1 and 27-byte compact binary v2).
 4. **Crop Manager (`pots.rs`)**: `PotManager` manages `Arc<RwLock<VirtualPot>>`, orchestrates the publication clock, and interacts with the weather service.
 5. **HTTP Control API (`api.rs`)**: Axum server with `/health`, `/v1/pots`, `/v1/places`, and `/v1/weather` routes, protected by constant-time Bearer authentication.
+
+**Dependency hygiene**: the runtime dependency set no longer includes `async-trait`, `tower-http` or `thiserror`; they became unused after the Axum rewrite. `tower` remains a dev-dependency only, used by the router tests through `oneshot`, so the release image and compile graph stay smaller.
 
 ---
 
@@ -71,19 +73,35 @@ The component is divided into decoupled modular layers:
 The physical engine in `Environment::step(seconds, now)` updates the hydroponic state variables:
 - **Temperature and humidity**: Smoothly relax toward the target environment; the fan (`FAN`) cools (-0.35°C/min) and dehumidifies (-1.5%/min); the humidifier (`HUMIDIFIER`) adds moisture (+2.5%/min).
 - **Sunlight and artificial light**: In `AUTO` mode, follows a day/night sinusoidal curve with UTC offset. The UV lamp (`UV_LIGHT`) adds light radiation (+900 lx) and a slight thermal increase.
-- **Substrate moisture**: Models evaporation as a function of temperature and ambient drying factor, offset by water pump irrigation (`WATER_PUMP`, +1.2%/s) or outdoor rain.
+- **Substrate moisture (AUTO/WEATHER)**: Models evaporation as a function of temperature and ambient drying factor, offset by water pump irrigation (`WATER_PUMP`, +1.2%/s) or outdoor rain.
 - **Chemical evolution**: pH dosing (`PH_DOSER`) lowers pH by 0.12 units per dosed second; the nutrient doser (`NUTRIENT_DOSER`) increases TDS by 70 ppm per dosed second.
+
+**MANUAL substrate moisture**: in `MANUAL` mode, `Targets.soil_moisture` carries the configured setpoint. Evaporation is not applied; the water pump (or rain, when available) pushes moisture above the setpoint, and with no irrigation each step relaxes it back toward the setpoint with `rate = min(0.1 * minutes, 1.0)`. `AUTO` and `WEATHER` keep the physical evaporation plus irrigation model.
 
 ---
 
-## 4. Tests and Validation
+## 4. Capabilities Topic
+
+After `status=online` and before subscribing to `.../commands`, each simulated device publishes a retained QoS 1 message on `.../capabilities`. It follows schema 1 and declares:
+
+- firmware `smartpot-datagenerator/2.0.0` and hardware `virtual`;
+- telemetry formats `json-v1` and `compact-v2` (27 bytes);
+- seven sensors: `temperature`, `humidity`, `atmosphere`, `brightness`, `ph`, `tds` and `soilMoisture`, with API-aligned ranges;
+- six actuators: `WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER` and `PH_DOSER`.
+
+The payload stays under 2 KB. A publish failure is logged and never blocks the command subscription, so the v1 contract keeps working.
+
+---
+
+## 5. Tests and Validation
 
 The component includes a comprehensive unit and integration test suite:
-- `tests/test_environment.rs` (11 tests): Sensor scale bounds, fan cooling,夜间 UV lighting, chemical dosing, and weather filtering by solar exposure.
-- `tests/test_device.rs` (5 tests): MQTT v1 contract, command validation, invalid command discarding, and device list parsing.
+- `tests/test_environment.rs` (12 tests): Sensor scale bounds, fan cooling, night-time UV lighting, chemical dosing, weather filtering by solar exposure, and the `MANUAL` soil setpoint that holds, is pushed by irrigation and relaxes back.
+- `tests/test_device.rs` (6 tests): MQTT v1 contract, schema 1 capabilities, command validation, invalid command discarding, and device list parsing.
 - `tests/test_virtual_pots.rs` (7 tests): Weather scenes, coordinate cache, static crop protection, control API authorization, and full virtual crop CRUD lifecycle.
+- `src/device.rs` unit test (1): compact v2 presence mask, epoch, sequence and CRC-8.
 
-All tests run in under 0.05 seconds in native Rust.
+The suite has 26 tests and runs natively with `cargo test`.
 
 ---
 
@@ -97,7 +115,7 @@ All tests run in under 0.05 seconds in native Rust.
 | Componente | [SmartPot-DataGenerator](https://github.com/SmartPotTech/SmartPot-DataGenerator) |
 | Versión | 2.0.0 · noviembre 2026 |
 | Lenguaje y runtime | Rust 1.85+ · Tokio · Axum 0.8 · rumqttc |
-| Alcance | Cultivos virtuales, cultivos fijos para demo y QA, modelo físico agronómico, API de control REST interna, seguridad de memoria, pruebas y despliegue |
+| Alcance | Cultivos virtuales, cultivos fijos para demo y QA, modelo físico agronómico, capacidades MQTT, API de control REST interna, seguridad de memoria, pruebas y despliegue |
 | Estado | Simulador canónico en producción (Stack B). Implementación histórica en Python archivada en SmartPot-DataGenerator-Python |
 
 ---
@@ -136,9 +154,11 @@ El componente se divide en capas modulares desacopladas:
    - `actuator.rs`: Tipos de actuadores y duraciones legibles ("15 s", "10 min", "2 h").
    - `environment.rs`: Motor de simulación física con cálculo de objetivos, relajación exponencial, evaporación, riego y ruido gaussiano.
    - `weather.rs`: Cliente Open-Meteo con mapeo de códigos WMO y caché geográfica en memoria por cuadrícula con TTL de 10 minutos.
-3. **Dispositivo simulado (`device.rs`)**: Conexión MQTT cliente mediante `rumqttc`, bucle de eventos asíncrono, suscripción a órdenes y publicación de telemetría.
+3. **Dispositivo simulado (`device.rs`)**: Conexión MQTT cliente mediante `rumqttc`, bucle de eventos asíncrono, publicación retenida de capacidades, suscripción a órdenes y publicación de telemetría.
 4. **Gestor de cultivos (`pots.rs`)**: `PotManager` administra `Arc<RwLock<VirtualPot>>`, orquesta el reloj de publicación e interactúa con el servicio de clima.
 5. **API de control HTTP (`api.rs`)**: Servidor Axum con rutas `/health`, `/v1/pots`, `/v1/places` y `/v1/weather`, protegido por autenticación Bearer en tiempo constante.
+
+**Higiene de dependencias**: el conjunto de dependencias de ejecución ya no incluye `async-trait`, `tower-http` ni `thiserror`; quedaron sin uso tras la reescritura con Axum. `tower` sigue solo como dependencia de desarrollo, usada por las pruebas del router mediante `oneshot`, así la imagen de release y el grafo de compilación son más pequeños.
 
 ---
 
@@ -147,16 +167,32 @@ El componente se divide en capas modulares desacopladas:
 El motor físico en `Environment::step(seconds, now)` actualiza las variables de estado hidropónico:
 - **Temperatura y humedad**: Relajan suavemente hacia el ambiente objetivo; el ventilador (`FAN`) enfría (-0.35°C/min) y deshumidifica (-1.5%/min); el humidificador (`HUMIDIFIER`) aporta humedad (+2.5%/min).
 - **Luz solar y artificial**: En modo `AUTO`, sigue una curva senoidal día/noche con desfase UTC. La lámpara ultravioleta (`UV_LIGHT`) suma radiación lumínica (+900 lx) y un ligero incremento térmico.
-- **Humedad del sustrato**: Modela la evaporación en función de la temperatura y el factor de secado ambiental, compensada por el riego de la bomba (`WATER_PUMP`, +1.2%/s) o la lluvia en cultivos al aire libre.
+- **Humedad del sustrato (AUTO/WEATHER)**: Modela la evaporación en función de la temperatura y el factor de secado ambiental, compensada por el riego de la bomba (`WATER_PUMP`, +1.2%/s) o la lluvia en cultivos al aire libre.
 - **Evolución química**: La dosificación de pH (`PH_DOSER`) reduce 0.12 unidades por segundo dosificado; el dosificador de nutrientes (`NUTRIENT_DOSER`) incrementa 70 ppm por segundo de dosis.
+
+**Humedad del sustrato en `MANUAL`**: en modo `MANUAL`, `Targets.soil_moisture` lleva el punto de ajuste configurado. No se aplica evaporación; la bomba de agua (o la lluvia, cuando existe) empuja la humedad por encima del punto de ajuste y, sin riego, cada paso la relaja de vuelta hacia ese valor con `rate = min(0.1 * minutes, 1.0)`. `AUTO` y `WEATHER` conservan el modelo físico de evaporación más riego.
 
 ---
 
-## 4. Pruebas y validación
+## 4. Tópico de capacidades
+
+Después de `status=online` y antes de suscribirse a `.../commands`, cada dispositivo simulado publica un mensaje retenido QoS 1 en `.../capabilities`. Sigue el esquema 1 y declara:
+
+- firmware `smartpot-datagenerator/2.0.0` y hardware `virtual`;
+- formatos de telemetría `json-v1` y `compact-v2` (27 bytes);
+- siete sensores: `temperature`, `humidity`, `atmosphere`, `brightness`, `ph`, `tds` y `soilMoisture`, con rangos alineados con la API;
+- seis actuadores: `WATER_PUMP`, `UV_LIGHT`, `FAN`, `HUMIDIFIER`, `NUTRIENT_DOSER` y `PH_DOSER`.
+
+La carga ocupa menos de 2 KB. Un fallo al publicar se registra y nunca bloquea la suscripción a comandos, así el contrato v1 sigue funcionando.
+
+---
+
+## 5. Pruebas y validación
 
 El componente cuenta con una suite completa de pruebas unitarias e integración:
-- `tests/test_environment.rs` (11 pruebas): Verificación de escalas de sensores, enfriamiento por ventilador, iluminación nocturna por UV, dosificaciones y filtrado de clima por exposición solar.
-- `tests/test_device.rs` (5 pruebas): Contrato MQTT v1, validación de comandos, descarte de comandos inválidos y parsing de listas de dispositivos.
+- `tests/test_environment.rs` (12 pruebas): Verificación de escalas de sensores, enfriamiento por ventilador, iluminación nocturna por UV, dosificaciones, filtrado de clima por exposición solar y el punto de ajuste de sustrato en `MANUAL`, que se conserva, sube con el riego y vuelve a relajarse.
+- `tests/test_device.rs` (6 pruebas): Contrato MQTT v1, capacidades con esquema 1, validación de comandos, descarte de comandos inválidos y parsing de listas de dispositivos.
 - `tests/test_virtual_pots.rs` (7 pruebas): Escenas climáticas, caché de coordenadas, protección de cultivos estáticos, autorización de la API de control y ciclo completo CRUD de cultivos virtuales.
+- Prueba unitaria de `src/device.rs` (1): máscara de presencia, época, secuencia y CRC-8 del paquete compacto v2.
 
-Todas las pruebas corren en menos de 0.05 segundos en Rust nativo.
+La suite tiene 26 pruebas y se ejecuta de forma nativa con `cargo test`.

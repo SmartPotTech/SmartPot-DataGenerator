@@ -13,6 +13,7 @@ sequenceDiagram
   D->>B: CONNECT (username: cropId, password: key, LWT: offline)
   B-->>D: CONNACK (Success)
   D->>B: PUBLISH smartpot/v1/{cropId}/status (online, retain)
+  D->>B: PUBLISH smartpot/v1/{cropId}/capabilities (schema 1, retain, QoS 1)
   D->>B: SUBSCRIBE smartpot/v1/{cropId}/commands
   M-->>C: Ok(Arc<VirtualPot>)
   C-->>A: 200 OK (snapshot del cultivo)

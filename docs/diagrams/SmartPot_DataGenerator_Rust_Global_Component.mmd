@@ -11,7 +11,7 @@ flowchart LR
     manager["pots.rs · PotManager<br/>VirtualPot con Arc + RwLock<br/>altas, cambios y retiros atómicos"]
     env["environment.rs<br/>modelo físico · modos AUTO, MANUAL, WEATHER<br/>actuadores · ruido gaussiano"]
     weather["weather.rs<br/>clima Open-Meteo con caché TTL<br/>buscador de lugares"]
-    device["device.rs · SimulatedDevice<br/>cliente rumqttc por cultivo<br/>telemetría · comandos · ACK · LWT"]
+    device["device.rs · SimulatedDevice<br/>cliente rumqttc por cultivo<br/>telemetría · capabilities · comandos · ACK · LWT"]
   end
   api -->|"PUT · GET · DELETE /v1/pots<br/>red interna segura"| control
   main --> config & control & manager
