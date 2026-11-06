@@ -1,5 +1,7 @@
 //! Pruebas unitarias del modelo físico del cultivo hidropónico.
 
+use std::collections::HashMap;
+
 use smartpot_datagenerator::domain::actuator::{Action, Actuator};
 use smartpot_datagenerator::domain::environment::Environment;
 use smartpot_datagenerator::domain::limits::get_limits;
@@ -40,6 +42,46 @@ fn test_water_pump_raises_soil_moisture() {
     advance(&mut env, 1, NOON, 30.0);
     let moisture = env.state.get("soilMoisture").copied().unwrap();
     assert!(moisture > 45.0, "Expected moisture > 45, got: {moisture}");
+}
+
+#[test]
+fn test_manual_soil_moisture_holds_its_setpoint_and_relaxes_after_irrigation() {
+    let mut env = Environment::new("LETTUCE", Some(1), 0.0);
+    let _ = env.set_mode("MANUAL");
+
+    let mut manual = HashMap::new();
+    manual.insert("soilMoisture".to_string(), 55.0);
+    env.set_manual(&manual);
+
+    // Sin evaporación en MANUAL, el punto de ajuste se conserva durante una hora.
+    advance(&mut env, 60, NOON, 60.0);
+    let held = env.state.get("soilMoisture").copied().unwrap();
+    assert!(
+        (held - 55.0).abs() < 1e-6,
+        "Manual setpoint must hold at 55, got: {held}"
+    );
+
+    // La bomba de agua puede empujar la humedad por encima del punto de ajuste.
+    let _ = env.apply(
+        Actuator::WaterPump,
+        Action::Activate,
+        Some(15),
+        NOON + 3600.0,
+    );
+    env.step(60.0, NOON + 3660.0);
+    let irrigated = env.state.get("soilMoisture").copied().unwrap();
+    assert!(
+        irrigated > 55.0,
+        "Water pump must push moisture above 55, got: {irrigated}"
+    );
+
+    // Al cesar el riego, la humedad vuelve suavemente al punto de ajuste.
+    advance(&mut env, 60, NOON + 3660.0, 60.0);
+    let relaxed = env.state.get("soilMoisture").copied().unwrap();
+    assert!(
+        relaxed < irrigated && (relaxed - 55.0).abs() < 1.0,
+        "Moisture must relax back near 55, got: {relaxed} (was {irrigated})"
+    );
 }
 
 #[test]

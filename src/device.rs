@@ -45,6 +45,7 @@ pub struct DeviceTopics {
     pub commands: String,
     pub ack: String,
     pub status: String,
+    pub capabilities: String,
 }
 
 impl DeviceTopics {
@@ -55,8 +56,43 @@ impl DeviceTopics {
             commands: format!("{base}/commands"),
             ack: format!("{base}/commands/ack"),
             status: format!("{base}/status"),
+            capabilities: format!("{base}/capabilities"),
         }
     }
+}
+
+/// Carga retenida de capacidades declaradas por el dispositivo virtual (Audit_06, esquema 1).
+/// Declara los mismos siete sensores y seis actuadores que implementa el simulador.
+pub fn capabilities_payload() -> String {
+    serde_json::json!({
+        "schema": 1,
+        "device": {
+            "firmware": "smartpot-datagenerator/2.0.0",
+            "hardware": "virtual",
+            "telemetry": {
+                "formats": ["json-v1", "compact-v2"],
+                "compactBytes": COMPACT_V2_SIZE,
+            },
+        },
+        "sensors": [
+            {"key": "temperature", "unit": "C", "resolution": 0.01, "range": [-20.0, 60.0]},
+            {"key": "humidity", "unit": "%", "resolution": 0.01, "range": [0.0, 100.0]},
+            {"key": "atmosphere", "unit": "hPa", "resolution": 0.1, "range": [300.0, 1100.0]},
+            {"key": "brightness", "unit": "lux", "resolution": 1.0, "range": [0.0, 2000.0]},
+            {"key": "ph", "unit": "pH", "resolution": 0.01, "range": [0.0, 14.0]},
+            {"key": "tds", "unit": "ppm", "resolution": 1.0, "range": [0.0, 3000.0]},
+            {"key": "soilMoisture", "unit": "%", "resolution": 0.01, "range": [0.0, 100.0]},
+        ],
+        "actuators": [
+            "WATER_PUMP",
+            "UV_LIGHT",
+            "FAN",
+            "HUMIDIFIER",
+            "NUTRIENT_DOSER",
+            "PH_DOSER",
+        ],
+    })
+    .to_string()
 }
 
 pub struct SimulatedDevice {
@@ -169,6 +205,25 @@ impl SimulatedDevice {
                                 .await
                             {
                                 warn!("Error publishing online status for {crop_id}: {e}");
+                            }
+
+                            // Las capacidades se publican retenidas después del estado
+                            // online y antes de escuchar comandos, para que la API conozca
+                            // el hardware antes de la primera orden. Un fallo aquí no debe
+                            // impedir la suscripción: el contrato v1 sigue funcionando.
+                            match client
+                                .publish(
+                                    &topics.capabilities,
+                                    QoS::AtLeastOnce,
+                                    true,
+                                    capabilities_payload(),
+                                )
+                                .await
+                            {
+                                Ok(()) => info!("Crop {crop_id} published its capabilities"),
+                                Err(e) => {
+                                    warn!("Error publishing capabilities for {crop_id}: {e}")
+                                }
                             }
 
                             if let Err(e) =

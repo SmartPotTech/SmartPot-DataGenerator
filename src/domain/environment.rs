@@ -53,6 +53,10 @@ pub struct Targets {
     pub pressure: f64,
     pub drying: f64,
     pub rain: f64,
+    /// Punto de ajuste de humedad del sustrato en modo MANUAL. En AUTO y WEATHER
+    /// es `None` para que la evaporación y el riego evolucionen libremente.
+    #[serde(default)]
+    pub soil_moisture: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -247,9 +251,25 @@ impl Environment {
         let irrigation = PUMP_RATE * pump_seconds + targets.rain * minutes;
 
         let cur_moisture = self.state.get("soilMoisture").copied().unwrap_or(50.0);
+        let next_moisture = match targets.soil_moisture {
+            Some(setpoint) => {
+                // En MANUAL el sustrato no pierde agua por evaporación: el punto
+                // de ajuste se conserva y solo la bomba o la lluvia pueden
+                // empujarlo por encima. El retorno suave al valor fijado ocurre
+                // en los pasos posteriores, no en el mismo paso del riego.
+                if irrigation > 0.0 {
+                    cur_moisture + irrigation
+                } else {
+                    let rate = (0.1 * minutes).min(1.0);
+                    cur_moisture + (setpoint - cur_moisture) * rate
+                }
+            }
+            // En AUTO y WEATHER se mantiene el comportamiento físico actual.
+            None => cur_moisture - evaporation + irrigation,
+        };
         self.state.insert(
             "soilMoisture".to_string(),
-            clamp("soilMoisture", cur_moisture - evaporation + irrigation),
+            clamp("soilMoisture", next_moisture),
         );
 
         if self.mode == "MANUAL" {
@@ -276,6 +296,12 @@ impl Environment {
                 pressure: self.manual.get("atmosphere").copied().unwrap_or(1012.0),
                 drying: 1.0,
                 rain: 0.0,
+                soil_moisture: Some(
+                    self.manual
+                        .get("soilMoisture")
+                        .copied()
+                        .unwrap_or(self.base.soil_moisture),
+                ),
             };
         }
 
@@ -297,6 +323,7 @@ impl Environment {
                         pressure: w.pressure,
                         drying: 0.8 * (1.0 + light / 1500.0),
                         rain: 0.0,
+                        soil_moisture: None,
                     };
                 }
 
@@ -311,6 +338,7 @@ impl Environment {
                     pressure: w.pressure,
                     drying,
                     rain,
+                    soil_moisture: None,
                 };
             }
         }
@@ -331,6 +359,7 @@ impl Environment {
             pressure: 1012.0,
             drying: 1.0,
             rain: 0.0,
+            soil_moisture: None,
         }
     }
 
