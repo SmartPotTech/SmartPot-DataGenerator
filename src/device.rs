@@ -61,6 +61,25 @@ impl DeviceTopics {
     }
 }
 
+/// Publicación retenida de capacidades: tópico, QoS, retención y carga.
+/// Se separa del bucle MQTT para poder validar el contrato sin un broker real.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilitiesPublication {
+    pub topic: String,
+    pub qos: QoS,
+    pub retain: bool,
+    pub payload: String,
+}
+
+pub fn capabilities_publication(topics: &DeviceTopics) -> CapabilitiesPublication {
+    CapabilitiesPublication {
+        topic: topics.capabilities.clone(),
+        qos: QoS::AtLeastOnce,
+        retain: true,
+        payload: capabilities_payload(),
+    }
+}
+
 /// Carga retenida de capacidades declaradas por el dispositivo virtual (Audit_06, esquema 1).
 /// Declara los mismos siete sensores y seis actuadores que implementa el simulador.
 pub fn capabilities_payload() -> String {
@@ -211,12 +230,13 @@ impl SimulatedDevice {
                             // online y antes de escuchar comandos, para que la API conozca
                             // el hardware antes de la primera orden. Un fallo aquí no debe
                             // impedir la suscripción: el contrato v1 sigue funcionando.
+                            let publication = capabilities_publication(&topics);
                             match client
                                 .publish(
-                                    &topics.capabilities,
-                                    QoS::AtLeastOnce,
-                                    true,
-                                    capabilities_payload(),
+                                    &publication.topic,
+                                    publication.qos,
+                                    publication.retain,
+                                    publication.payload,
                                 )
                                 .await
                             {

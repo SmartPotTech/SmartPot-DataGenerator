@@ -56,7 +56,8 @@ impl FromStr for Actuator {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_uppercase().as_str() {
             "WATER_PUMP" => Ok(Actuator::WaterPump),
-            "UV_LIGHT" => Ok(Actuator::UvLight),
+            // `LIGHTS` es el alias heredado del contrato anterior; UV_LIGHT es el canónico.
+            "UV_LIGHT" | "LIGHTS" => Ok(Actuator::UvLight),
             "FAN" => Ok(Actuator::Fan),
             "HUMIDIFIER" => Ok(Actuator::Humidifier),
             "NUTRIENT_DOSER" => Ok(Actuator::NutrientDoser),
