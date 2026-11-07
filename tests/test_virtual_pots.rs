@@ -475,6 +475,8 @@ async fn test_control_api_rejects_invalid_configuration() {
 
 #[tokio::test]
 async fn test_control_api_removal_is_idempotent_and_stops_the_crop() {
+    // La API pausa el dispositivo virtual con DELETE /v1/pots/{crop_id}; repetir
+    // la pausa debe seguir devolviendo 204 y el cultivo deja de publicar.
     let settings = test_settings();
     let manager = Arc::new(PotManager::new(settings, WeatherClient::default()));
     manager.load_static().await.unwrap();
