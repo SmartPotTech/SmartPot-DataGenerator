@@ -82,6 +82,10 @@ cargo run
 - **JSON v1** (default): `{"temperature","humidity","brightness","ph","tds","atmosphere","soilMoisture"}`.
 - **27-byte compact v2** with `SIMULATOR_PAYLOAD_FORMAT=binary`, on the same topic: magic `0x50`, version, sequence, epoch, per-sensor presence mask, pressure, 32-bit light and CRC-8.
 
+### Interactive Diagrams
+
+The [interactive diagrams](docs/diagrams/interactive/README.md#english) follow the MQTT session of a virtual crop from `CONNECT` to the command acknowledgement, in English and Spanish, with links to the exact source lines.
+
 ---
 
 ## Español
@@ -157,3 +161,7 @@ cargo run
 
 - **JSON del contrato v1** (por defecto): `{"temperature","humidity","brightness","ph","tds","atmosphere","soilMoisture"}`.
 - **Paquete compacto v2** de 27 bytes con `SIMULATOR_PAYLOAD_FORMAT=binary`, en el mismo tópico: magic `0x50`, versión, secuencia, época, máscara de presencia por sensor, presión, luz de 32 bits y CRC-8.
+
+### Diagramas interactivos
+
+Los [diagramas interactivos](docs/diagrams/interactive/README.md#español) siguen la sesión MQTT de un cultivo virtual desde el `CONNECT` hasta la confirmación del comando, en español e inglés, con enlaces a las líneas exactas del código.
