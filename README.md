@@ -14,6 +14,26 @@ Virtual hydroponic crop and device simulator for the **SmartPot** platform, rewr
 
 It speaks the SmartPot **MQTT v1** contract identically to a physical ESP32 device, and exposes a constant-time protected internal REST API for dynamic runtime crop management.
 
+```mermaid
+flowchart LR
+  api["SmartPot-API<br/>VirtualDeviceService"]
+  broker["SmartPot-Broker (EMQX)<br/>mqtt.smartpot.app:8883"]
+  meteo["Open-Meteo API"]
+  subgraph sim["SmartPot-DataGenerator · Rust (Axum 0.8 + Tokio)"]
+    direction TB
+    rest["HTTP Server :8081<br/>PUT /v1/pots · GET /v1/places · Bearer Auth"]
+    mgr["PotManager (RwLock)<br/>Lifecycle management of virtual pots"]
+    env["Environment Physics Model<br/>Auto, Manual, Weather modes"]
+    client["MQTT Client Pool (rumqttc)<br/>Async telemetry publishing & command ack"]
+  end
+  api -->|"REST control"| rest
+  rest --> mgr
+  mgr --> env
+  mgr --> client
+  client <-->|"MQTT v1 / v2"| broker
+  env -.->|"weather fetch"| meteo
+```
+
 ### Key Features
 
 - **Extreme Performance & Efficiency**: Built on the **Tokio** async runtime and **Axum 0.8**, with a memory footprint under 15 MB RAM and sub-millisecond response times.
@@ -93,6 +113,26 @@ The [interactive diagrams](docs/diagrams/interactive/README.md#english) follow t
 Simulador de cultivos y dispositivos hidropónicos virtuales para la plataforma **SmartPot**, reescrito en **Rust** para máximo rendimiento, seguridad de memoria sin recolector de basura (*garbage collection*) y concurrencia asíncrona de alta eficiencia.
 
 Habla el contrato **MQTT v1** de SmartPot exactamente igual que un dispositivo físico ESP32, y expone una API REST interna protegida con tiempo constante (*constant-time comparison*) para administración dinámica de cultivos en tiempo de ejecución.
+
+```mermaid
+flowchart LR
+  api["SmartPot-API<br/>VirtualDeviceService"]
+  broker["SmartPot-Broker (EMQX)<br/>mqtt.smartpot.app:8883"]
+  meteo["Open-Meteo API"]
+  subgraph sim["SmartPot-DataGenerator · Rust (Axum 0.8 + Tokio)"]
+    direction TB
+    rest["HTTP Server :8081<br/>PUT /v1/pots · GET /v1/places · Bearer Auth"]
+    mgr["PotManager (RwLock)<br/>Lifecycle management of virtual pots"]
+    env["Environment Physics Model<br/>Auto, Manual, Weather modes"]
+    client["MQTT Client Pool (rumqttc)<br/>Async telemetry publishing & command ack"]
+  end
+  api -->|"REST control"| rest
+  rest --> mgr
+  mgr --> env
+  mgr --> client
+  client <-->|"MQTT v1 / v2"| broker
+  env -.->|"weather fetch"| meteo
+```
 
 ### Características principales
 
