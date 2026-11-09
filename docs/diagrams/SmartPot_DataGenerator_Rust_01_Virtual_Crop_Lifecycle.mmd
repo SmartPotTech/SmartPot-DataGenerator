@@ -2,37 +2,21 @@
 sequenceDiagram
   autonumber
   participant A as SmartPot-API
-  participant C as Axum API
-  participant M as PotManager
-  participant D as SimulatedDevice
-  participant B as SmartPot-Broker
-  A->>C: PUT /v1/pots/{cropId} (clave, especie, modo, lugar, intervalo)
-  C->>C: Validación de token con tiempo constante (subtle)
-  C->>M: upsert(PotConfig)
-  M->>D: new() + start() (tarea Tokio independiente)
-  D->>B: CONNECT (username: cropId, password: key, LWT: offline)
-  B-->>D: CONNACK (Success)
-  D->>B: PUBLISH smartpot/v1/{cropId}/status (online, retain)
-  D->>B: PUBLISH smartpot/v1/{cropId}/capabilities (schema 1, retain, QoS 1)
-  D->>B: SUBSCRIBE smartpot/v1/{cropId}/commands
-  M-->>C: Ok(Arc<VirtualPot>)
-  C-->>A: 200 OK (snapshot del cultivo)
-  loop Cada intervalo (ej. 30s)
-    M->>D: publish_reading(now)
-    D->>D: Environment::step() + reading()
-    D->>B: PUBLISH smartpot/v1/{cropId}/telemetry (JSON, QoS 0)
+  participant G as SmartPot-DataGenerator (Axum :8081)
+  participant P as PotManager
+  participant D as VirtualDevice
+  participant B as SmartPot-Broker (EMQX)
+  A->>G: PUT /v1/pots/{cropId} (key, species, mode, location, interval)
+  G->>P: Provision or update virtual pot
+  P->>D: Connect MQTT client with clientId smartpot-sim-{cropId}
+  D->>B: CONNECT with LWT offline status
+  D->>B: Publish status online (retained)
+  D->>B: Publish capabilities (retained)
+  loop Every sampling interval
+    P->>P: Step physics environment model & add sensor noise
+    D->>B: Publish telemetry (JSON v1 or compact binary v2)
   end
-  opt Comando a actuador
-    B->>D: PUBLISH smartpot/v1/{cropId}/commands (id, actuator, action)
-    D->>D: Environment::apply()
-    D->>B: PUBLISH smartpot/v1/{cropId}/commands/ack (EXECUTED, QoS 1)
-    D->>M: Adelanta próxima lectura a 2s
-  end
-  opt Eliminación
-    A->>C: DELETE /v1/pots/{cropId}
-    C->>M: remove(cropId)
-    M->>D: stop()
-    D->>B: PUBLISH smartpot/v1/{cropId}/status (offline, retain)
-    D->>B: DISCONNECT
-    C-->>A: 204 No Content
-  end
+  B->>D: Dispatch command {id, actuator, action, durationSeconds}
+  D->>P: Apply actuator effect to environment
+  D->>B: Publish commands/ack EXECUTED
+  A->>G: GET /v1/pots/{cropId}

@@ -1,5 +1,5 @@
 <!-- portada
-eyebrow: Component Documentation · Documentación del componente
+eyebrow: Component Technical Documentation
 titulo: SmartPot-DataGenerator
 acento: DataGenerator
 subtitulo: High-Performance SmartPot Simulator in Rust · El simulador de alto rendimiento de SmartPot en Rust
@@ -12,11 +12,7 @@ proyecto: smartpot.app
 
 # SmartPot-DataGenerator
 
-[English](#english) | [Español](#español)
-
 ---
-
-# English
 
 ## Document Sheet
 
