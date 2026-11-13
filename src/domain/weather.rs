@@ -4,11 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{watch, Mutex, RwLock};
 
 const WEATHER_URL: &str = "https://api.open-meteo.com/v1/forecast";
 const GEOCODING_URL: &str = "https://geocoding-api.open-meteo.com/v1/search";
 const TIMEOUT: Duration = Duration::from_secs(8);
+const PLACES_FRESH_TTL: Duration = Duration::from_secs(3600);
+const PLACES_STALE_TTL: Duration = Duration::from_secs(24 * 3600);
+const PLACES_CACHE_MAX_ENTRIES: usize = 2048;
 const USER_AGENT: &str =
     "SmartPot-Simulator/2.0 (+https://github.com/SmartPotTech/SmartPot-DataGenerator)";
 
@@ -64,10 +67,21 @@ struct CachedEntry {
 }
 
 #[derive(Debug, Clone)]
+struct CachedPlaces {
+    places: Vec<Place>,
+    fetched_at: Instant,
+}
+
+type PlacesFlightSender = watch::Sender<Option<Result<Vec<Place>, String>>>;
+
+#[derive(Debug, Clone)]
 pub struct WeatherClient {
     client: reqwest::Client,
     ttl: Duration,
+    places_ttl: Duration,
     cache: Arc<RwLock<HashMap<(i64, i64), CachedEntry>>>,
+    places_cache: Arc<RwLock<HashMap<(String, u8), CachedPlaces>>>,
+    places_inflight: Arc<Mutex<HashMap<(String, u8), PlacesFlightSender>>>,
 }
 
 impl Default for WeatherClient {
@@ -87,7 +101,10 @@ impl WeatherClient {
         Self {
             client,
             ttl,
+            places_ttl: PLACES_FRESH_TTL,
             cache: Arc::new(RwLock::new(HashMap::new())),
+            places_cache: Arc::new(RwLock::new(HashMap::new())),
+            places_inflight: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -203,11 +220,132 @@ impl WeatherClient {
         Ok(weather)
     }
 
-    /// Busca lugares geográficos por nombre.
+    /// Busca lugares geográficos por nombre con caché en memoria, fusión de consultas concurrentes y respaldo temporal.
     pub async fn search(&self, query: &str, count: u8) -> Result<Vec<Place>, String> {
+        self.search_with_url(GEOCODING_URL, query, count).await
+    }
+
+    async fn search_with_url(
+        &self,
+        base_url: &str,
+        query: &str,
+        count: u8,
+    ) -> Result<Vec<Place>, String> {
+        let trimmed = query.trim();
+        let key = (trimmed.to_lowercase(), count);
+
+        {
+            let cache = self.places_cache.read().await;
+            if let Some(entry) = cache.get(&key) {
+                if entry.fetched_at.elapsed() < self.places_ttl {
+                    return Ok(entry.places.clone());
+                }
+            }
+        }
+
+        let (tx_opt, mut rx_opt) = {
+            let mut inflight = self.places_inflight.lock().await;
+            if let Some(existing_tx) = inflight.get(&key) {
+                (None, Some(existing_tx.subscribe()))
+            } else {
+                let (tx, _rx) = watch::channel(None);
+                inflight.insert(key.clone(), tx.clone());
+                (Some(tx), None)
+            }
+        };
+
+        if let Some(mut rx) = rx_opt.take() {
+            let _ = rx.wait_for(|val| val.is_some()).await;
+            if let Some(res) = rx.borrow().clone() {
+                return res;
+            }
+        }
+
+        struct InflightCleanup {
+            key: (String, u8),
+            inflight: Arc<Mutex<HashMap<(String, u8), PlacesFlightSender>>>,
+            tx: PlacesFlightSender,
+            result: Option<Result<Vec<Place>, String>>,
+        }
+
+        impl Drop for InflightCleanup {
+            fn drop(&mut self) {
+                let res = self
+                    .result
+                    .take()
+                    .unwrap_or_else(|| Err("Open-Meteo geocoding flight aborted".to_string()));
+                let _ = self.tx.send(Some(res));
+                if let Ok(mut guard) = self.inflight.try_lock() {
+                    guard.remove(&self.key);
+                } else {
+                    let inflight = Arc::clone(&self.inflight);
+                    let key = self.key.clone();
+                    tokio::spawn(async move {
+                        let mut guard = inflight.lock().await;
+                        guard.remove(&key);
+                    });
+                }
+            }
+        }
+
+        let mut cleanup = InflightCleanup {
+            key: key.clone(),
+            inflight: Arc::clone(&self.places_inflight),
+            tx: tx_opt.expect("leader always holds sender"),
+            result: None,
+        };
+
+        let final_res = match self.fetch_places(base_url, trimmed, count).await {
+            Ok(places) => {
+                let mut cache = self.places_cache.write().await;
+                if cache.len() >= PLACES_CACHE_MAX_ENTRIES {
+                    cache.clear();
+                }
+                cache.insert(
+                    key.clone(),
+                    CachedPlaces {
+                        places: places.clone(),
+                        fetched_at: Instant::now(),
+                    },
+                );
+                Ok(places)
+            }
+            Err(err) => {
+                let cache = self.places_cache.read().await;
+                if let Some(entry) = cache.get(&key) {
+                    if entry.fetched_at.elapsed() < PLACES_STALE_TTL {
+                        tracing::warn!(
+                            query = trimmed,
+                            error = %err,
+                            "serving stale geocoding places cache after upstream error"
+                        );
+                        Ok(entry.places.clone())
+                    } else {
+                        Err(err)
+                    }
+                } else {
+                    Err(err)
+                }
+            }
+        };
+
+        {
+            let mut guard = self.places_inflight.lock().await;
+            guard.remove(&cleanup.key);
+        }
+        cleanup.result = Some(final_res.clone());
+        final_res
+    }
+
+    async fn fetch_places(
+        &self,
+        base_url: &str,
+        query: &str,
+        count: u8,
+    ) -> Result<Vec<Place>, String> {
         let url = format!(
             "{}?name={}&count={}&language=en&format=json",
-            GEOCODING_URL,
+            base_url,
             urlencoding_simple(query),
             count
         );
@@ -272,4 +410,114 @@ fn urlencoding_simple(s: &str) -> String {
         }
     }
     encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{http::StatusCode, routing::get, Json, Router};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use tokio::net::TcpListener;
+    use tokio::sync::Notify;
+
+    #[tokio::test]
+    async fn search_caches_coalesces_and_falls_back_to_stale() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let fail = Arc::new(AtomicBool::new(false));
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+
+        let app = Router::new().route(
+            "/v1/search",
+            get({
+                let calls = Arc::clone(&calls);
+                let fail = Arc::clone(&fail);
+                let entered = Arc::clone(&entered);
+                let release = Arc::clone(&release);
+                move || async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    if fail.load(Ordering::SeqCst) {
+                        return (StatusCode::TOO_MANY_REQUESTS, Json(serde_json::json!({})));
+                    }
+                    let released = release.notified();
+                    entered.notify_one();
+                    released.await;
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({
+                            "results": [{
+                                "name": "Medellin",
+                                "latitude": 6.25184,
+                                "longitude": -75.56359,
+                                "country": "Colombia",
+                                "admin1": "Antioquia"
+                            }]
+                        })),
+                    )
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let base_url = format!("http://{addr}/v1/search");
+
+        let client = WeatherClient::default();
+
+        // 1. Concurrent callers coalesce into one upstream request.
+        let c1 = client.clone();
+        let u1 = base_url.clone();
+        let mut leader = tokio::spawn(async move { c1.search_with_url(&u1, "Medellin", 5).await });
+        tokio::select! {
+            _ = entered.notified() => {}
+            res = &mut leader => panic!("leader finished before reaching mock server: {res:?}"),
+        }
+
+        let mut followers = Vec::new();
+        for _ in 0..5 {
+            let cf = client.clone();
+            let uf = base_url.clone();
+            followers.push(tokio::spawn(async move {
+                cf.search_with_url(&uf, "  medellin ", 5).await
+            }));
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        release.notify_waiters();
+
+        let first = leader.await.unwrap().unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].name, "Medellin");
+        for f in followers {
+            let places = f.await.unwrap().unwrap();
+            assert_eq!(places, first);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // 2. Subsequent normalized query hits warm cache without calling upstream.
+        let cached = client
+            .search_with_url(&base_url, "MEDELLIN", 5)
+            .await
+            .unwrap();
+        assert_eq!(cached, first);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // 3. After fresh TTL expires, upstream 429 falls back to stale entry.
+        {
+            let mut guard = client.places_cache.write().await;
+            let entry = guard.get_mut(&("medellin".to_string(), 5)).unwrap();
+            entry.fetched_at = Instant::now() - PLACES_FRESH_TTL - Duration::from_secs(60);
+        }
+        fail.store(true, Ordering::SeqCst);
+        let stale = client
+            .search_with_url(&base_url, "Medellin", 5)
+            .await
+            .unwrap();
+        assert_eq!(stale, first);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        server.abort();
+    }
 }
