@@ -20,8 +20,8 @@ pub struct CommandPayload {
     pub id: serde_json::Value,
     pub actuator: Option<String>,
     pub action: Option<String>,
-    #[serde(rename = "durationSeconds")]
-    pub duration_seconds: Option<u64>,
+    #[serde(rename = "durationSeconds", default)]
+    pub duration_seconds: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -212,10 +212,12 @@ impl SimulatedDevice {
         let on_executed = self.on_executed_tx.clone();
 
         let task = tokio::spawn(async move {
+            let mut retry_attempt: u32 = 0;
             loop {
                 match event_loop.poll().await {
                     Ok(Event::Incoming(Packet::ConnAck(connack))) => {
                         if connack.code == rumqttc::ConnectReturnCode::Success {
+                            retry_attempt = 0;
                             connected.store(true, Ordering::SeqCst);
                             info!("Crop {crop_id} ({crop_type}) connected");
 
@@ -289,8 +291,13 @@ impl SimulatedDevice {
                     Ok(_) => {}
                     Err(e) => {
                         connected.store(false, Ordering::SeqCst);
-                        warn!("MQTT event_loop error for {crop_id}: {e}");
-                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        let delay = reconnect_delay(retry_attempt, rand::random::<f64>());
+                        retry_attempt = retry_attempt.saturating_add(1);
+                        warn!(
+                            "MQTT event_loop error for {crop_id} (retry #{retry_attempt} in {:?}): {e}",
+                            delay
+                        );
+                        tokio::time::sleep(delay).await;
                     }
                 }
             }
@@ -318,85 +325,111 @@ impl SimulatedDevice {
         };
 
         let cmd_id = match &cmd.id {
-            serde_json::Value::String(s) => s.clone(),
-            serde_json::Value::Number(n) => n.to_string(),
-            other => other.to_string(),
+            serde_json::Value::String(s) => {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                trimmed.to_string()
+            }
+            serde_json::Value::Number(n)
+                if n.as_i64().is_some_and(|v| v > 0) || n.as_u64().is_some_and(|v| v > 0) =>
+            {
+                n.to_string()
+            }
+            _ => return None,
         };
+
+        // Deduplicación QoS 1: si el broker reentrega el último comando ya procesado, devuelve su ACK sin re-ejecutar.
+        if let Some(prev) = last_cmd_arc.read().await.as_ref() {
+            if prev.id == cmd_id {
+                return Some(CommandAck {
+                    id: prev.id.clone(),
+                    status: prev.status.clone(),
+                    message: prev.message.clone(),
+                });
+            }
+        }
 
         let actuator_str = match &cmd.actuator {
-            Some(a) => a,
-            None => return None,
-        };
-
-        let action_str = match &cmd.action {
-            Some(a) => a,
-            None => "ACTIVATE",
+            Some(a) if !a.trim().is_empty() => a,
+            _ => return None,
         };
 
         let actuator = match actuator_str.parse::<Actuator>() {
             Ok(a) => a,
             Err(err) => {
-                let ack = CommandAck {
-                    id: cmd_id.clone(),
-                    status: "FAILED".to_string(),
-                    message: err,
-                };
-                let mut last = last_cmd_arc.write().await;
-                *last = Some(CommandRecord {
-                    id: ack.id.clone(),
-                    status: ack.status.clone(),
-                    message: ack.message.clone(),
-                    at: now,
-                });
-                return Some(ack);
+                return Some(Self::record_ack(last_cmd_arc, &cmd_id, "FAILED", err, now).await);
             }
+        };
+
+        let Some(action_str) = cmd
+            .action
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            return Some(
+                Self::record_ack(
+                    last_cmd_arc,
+                    &cmd_id,
+                    "FAILED",
+                    "Action is required".to_string(),
+                    now,
+                )
+                .await,
+            );
         };
 
         let action = match action_str.parse::<Action>() {
             Ok(a) => a,
             Err(err) => {
-                let ack = CommandAck {
-                    id: cmd_id.clone(),
-                    status: "FAILED".to_string(),
-                    message: err,
-                };
-                let mut last = last_cmd_arc.write().await;
-                *last = Some(CommandRecord {
-                    id: ack.id.clone(),
-                    status: ack.status.clone(),
-                    message: ack.message.clone(),
-                    at: now,
-                });
-                return Some(ack);
+                return Some(Self::record_ack(last_cmd_arc, &cmd_id, "FAILED", err, now).await);
             }
         };
 
-        let mut env = env_arc.write().await;
-        let ack = match env.apply(actuator, action, cmd.duration_seconds, now) {
+        let duration_seconds = match parse_duration_seconds(cmd.duration_seconds.as_ref()) {
+            Ok(d) => d,
+            Err(err) => {
+                return Some(Self::record_ack(last_cmd_arc, &cmd_id, "FAILED", err, now).await);
+            }
+        };
+
+        let ack_result = {
+            let mut env = env_arc.write().await;
+            env.apply(actuator, action, duration_seconds, now)
+        };
+        let ack = match ack_result {
             Ok(msg) => {
                 info!("Crop {crop_id} executed {msg}");
-                CommandAck {
-                    id: cmd_id,
-                    status: "EXECUTED".to_string(),
-                    message: msg,
-                }
+                Self::record_ack(last_cmd_arc, &cmd_id, "EXECUTED", msg, now).await
             }
-            Err(err) => CommandAck {
-                id: cmd_id,
-                status: "FAILED".to_string(),
-                message: err,
-            },
+            Err(err) => Self::record_ack(last_cmd_arc, &cmd_id, "FAILED", err, now).await,
         };
 
+        Some(ack)
+    }
+
+    async fn record_ack(
+        last_cmd_arc: &Arc<RwLock<Option<CommandRecord>>>,
+        cmd_id: &str,
+        status: &str,
+        message: String,
+        at: f64,
+    ) -> CommandAck {
+        let ack = CommandAck {
+            id: cmd_id.to_string(),
+            status: status.to_string(),
+            message,
+        };
         let mut last = last_cmd_arc.write().await;
         *last = Some(CommandRecord {
             id: ack.id.clone(),
             status: ack.status.clone(),
             message: ack.message.clone(),
-            at: now,
+            at,
         });
-
-        Some(ack)
+        ack
     }
 
     pub async fn stop(&mut self) {
@@ -492,11 +525,49 @@ pub fn calc_crc8(data: &[u8]) -> u8 {
 /// Tamaño del paquete compacto v2 (ver el formato en `encode_compact_binary`).
 pub const COMPACT_V2_SIZE: usize = 27;
 
+/// Espera de reconexión exponencial (2..=60 s) con jitter +/-25 % para evitar tormentas de conexión.
+pub fn reconnect_delay(attempt: u32, jitter_unit: f64) -> Duration {
+    let base_secs = (2u64 << attempt.min(5)).min(60) as f64;
+    let factor = 0.75 + 0.5 * jitter_unit.clamp(0.0, 1.0);
+    Duration::from_secs_f64((base_secs * factor).max(1.0))
+}
+
+fn parse_duration_seconds(raw: Option<&serde_json::Value>) -> Result<Option<u64>, String> {
+    match raw {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(secs) = n.as_u64().filter(|s| (1..=3600).contains(s)) {
+                Ok(Some(secs))
+            } else {
+                Err("durationSeconds must be an integer between 1 and 3600".to_string())
+            }
+        }
+        _ => Err("durationSeconds must be an integer between 1 and 3600".to_string()),
+    }
+}
+
+/// Escala y valida contra los rangos aceptados por la API; omite cualquier campo no finito o fuera de rango.
+fn scaled_in_range(
+    reading: &HashMap<String, f64>,
+    key: &str,
+    min: f64,
+    max: f64,
+    scale: f64,
+) -> Option<f64> {
+    let value = reading.get(key).copied().filter(|v| v.is_finite())?;
+    let rounded = (value * scale).round();
+    if rounded.is_finite() && rounded >= min * scale && rounded <= max * scale {
+        Some(rounded)
+    } else {
+        None
+    }
+}
+
 /// Codifica una lectura en el paquete compacto v2 (27 bytes, big-endian), la alternativa binaria al JSON v1:
 /// `[0]` 'P' · `[1]` versión 2 · `[2-3]` secuencia · `[4-7]` época en s · `[8-9]` máscara de presencia (bit 0
 /// temperatura, 1 humedad, 2 luz, 3 pH, 4 TDS, 5 presión, 6 sustrato) · `[10-11]` temperatura i16 ×100 ·
 /// `[12-13]` humedad ×100 · `[14-17]` luz u32 lux · `[18-19]` pH ×100 · `[20-21]` TDS · `[22-23]` presión ×10 hPa ·
-/// `[24-25]` sustrato ×100 · `[26]` CRC-8 (0x07). Un valor ausente deja su bit en 0; un 0 real lleva su bit.
+/// `[24-25]` sustrato ×100 · `[26]` CRC-8 (0x07). Un valor ausente o fuera de rango deja su bit en 0; un 0 real lleva su bit.
 pub fn encode_compact_binary(
     reading: &HashMap<String, f64>,
     seq_id: u16,
@@ -509,33 +580,33 @@ pub fn encode_compact_binary(
     out[4..8].copy_from_slice(&(now.max(0.0) as u32).to_be_bytes());
 
     let mut mask: u16 = 0;
-    let mut field = |key: &str, bit: u16| -> Option<f64> {
-        let value = reading.get(key).copied().filter(|v| v.is_finite())?;
-        mask |= 1 << bit;
-        Some(value)
-    };
-    if let Some(v) = field("temperature", 0) {
-        out[10..12].copy_from_slice(
-            &((v * 100.0).round().clamp(i16::MIN as f64, i16::MAX as f64) as i16).to_be_bytes(),
-        );
+    if let Some(scaled) = scaled_in_range(reading, "temperature", -20.0, 60.0, 100.0) {
+        mask |= 1 << 0;
+        out[10..12].copy_from_slice(&(scaled as i16).to_be_bytes());
     }
-    if let Some(v) = field("humidity", 1) {
-        out[12..14].copy_from_slice(&((v.clamp(0.0, 100.0) * 100.0).round() as u16).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "humidity", 0.0, 100.0, 100.0) {
+        mask |= 1 << 1;
+        out[12..14].copy_from_slice(&(scaled as u16).to_be_bytes());
     }
-    if let Some(v) = field("brightness", 2) {
-        out[14..18].copy_from_slice(&(v.clamp(0.0, u32::MAX as f64).round() as u32).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "brightness", 0.0, 200_000.0, 1.0) {
+        mask |= 1 << 2;
+        out[14..18].copy_from_slice(&(scaled as u32).to_be_bytes());
     }
-    if let Some(v) = field("ph", 3) {
-        out[18..20].copy_from_slice(&((v.clamp(0.0, 14.0) * 100.0).round() as u16).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "ph", 0.0, 14.0, 100.0) {
+        mask |= 1 << 3;
+        out[18..20].copy_from_slice(&(scaled as u16).to_be_bytes());
     }
-    if let Some(v) = field("tds", 4) {
-        out[20..22].copy_from_slice(&(v.clamp(0.0, u16::MAX as f64).round() as u16).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "tds", 0.0, 10_000.0, 1.0) {
+        mask |= 1 << 4;
+        out[20..22].copy_from_slice(&(scaled as u16).to_be_bytes());
     }
-    if let Some(v) = field("atmosphere", 5) {
-        out[22..24].copy_from_slice(&((v.clamp(0.0, 6553.5) * 10.0).round() as u16).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "atmosphere", 300.0, 1_100.0, 10.0) {
+        mask |= 1 << 5;
+        out[22..24].copy_from_slice(&(scaled as u16).to_be_bytes());
     }
-    if let Some(v) = field("soilMoisture", 6) {
-        out[24..26].copy_from_slice(&((v.clamp(0.0, 100.0) * 100.0).round() as u16).to_be_bytes());
+    if let Some(scaled) = scaled_in_range(reading, "soilMoisture", 0.0, 100.0, 100.0) {
+        mask |= 1 << 6;
+        out[24..26].copy_from_slice(&(scaled as u16).to_be_bytes());
     }
     out[8..10].copy_from_slice(&mask.to_be_bytes());
     out[COMPACT_V2_SIZE - 1] = calc_crc8(&out[..COMPACT_V2_SIZE - 1]);

@@ -233,3 +233,85 @@ fn test_device_list_parsing() {
     assert!(parse_devices("", true).is_err());
     assert!(parse_devices("", false).unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn test_duplicate_command_id_is_deduplicated_without_reapplying() {
+    let env_arc = Arc::new(RwLock::new(Environment::new("LETTUCE", Some(1), 0.0)));
+    let last_cmd_arc = Arc::new(RwLock::new(None));
+
+    let initial_ph = env_arc.read().await.state["ph"];
+    let payload =
+        r#"{"id": "dup-1", "actuator": "PH_DOSER", "action": "ACTIVATE", "durationSeconds": 2}"#;
+
+    let first = SimulatedDevice::process_command(payload, 10.0, &env_arc, &last_cmd_arc, CROP)
+        .await
+        .unwrap();
+    assert_eq!(first.status, "EXECUTED");
+    let ph_after_first = env_arc.read().await.state["ph"];
+    assert!(ph_after_first < initial_ph);
+
+    let redelivery = SimulatedDevice::process_command(payload, 11.0, &env_arc, &last_cmd_arc, CROP)
+        .await
+        .unwrap();
+    assert_eq!(redelivery, first);
+    assert_eq!(env_arc.read().await.state["ph"], ph_after_first);
+}
+
+#[tokio::test]
+async fn test_missing_action_and_invalid_durations_return_failed_ack() {
+    let env_arc = Arc::new(RwLock::new(Environment::new("LETTUCE", Some(1), 0.0)));
+    let last_cmd_arc = Arc::new(RwLock::new(None));
+
+    let missing_action = r#"{"id": "c-no-action", "actuator": "FAN"}"#;
+    let ack = SimulatedDevice::process_command(missing_action, 0.0, &env_arc, &last_cmd_arc, CROP)
+        .await
+        .unwrap();
+    assert_eq!(ack.status, "FAILED");
+
+    for (idx, bad) in ["0", "-5", "3601", "1.5", "\"15\"", "true"]
+        .iter()
+        .enumerate()
+    {
+        let cmd = format!(
+            r#"{{"id": "c-dur-{idx}", "actuator": "WATER_PUMP", "action": "ACTIVATE", "durationSeconds": {bad}}}"#
+        );
+        let ack = SimulatedDevice::process_command(&cmd, 0.0, &env_arc, &last_cmd_arc, CROP)
+            .await
+            .unwrap();
+        assert_eq!(ack.status, "FAILED", "duration {bad} should fail");
+    }
+}
+
+#[test]
+fn test_compact_binary_omits_out_of_range_and_non_finite_fields() {
+    use smartpot_datagenerator::device::{
+        calc_crc8, encode_compact_binary, reconnect_delay, COMPACT_V2_SIZE,
+    };
+    use std::collections::HashMap;
+
+    let mut reading = HashMap::new();
+    reading.insert("temperature".to_string(), 75.0);
+    reading.insert("humidity".to_string(), -5.0);
+    reading.insert("brightness".to_string(), 250_000.0);
+    reading.insert("ph".to_string(), f64::NAN);
+    reading.insert("tds".to_string(), 15_000.0);
+    reading.insert("atmosphere".to_string(), 1013.2);
+    reading.insert("soilMoisture".to_string(), 105.0);
+
+    let packet = encode_compact_binary(&reading, 7, 1_700_000_000.0);
+    // Solo `atmosphere` (bit 5) está dentro de rango; los demás quedan en 0.
+    assert_eq!(u16::from_be_bytes([packet[8], packet[9]]), 1 << 5);
+    assert_eq!(u16::from_be_bytes([packet[22], packet[23]]), 10_132);
+    assert_eq!(
+        calc_crc8(&packet[..COMPACT_V2_SIZE - 1]),
+        packet[COMPACT_V2_SIZE - 1]
+    );
+
+    // Verifica que el backoff crece exponencialmente con cota en 60s (+/-25% jitter).
+    let d0 = reconnect_delay(0, 0.5).as_secs_f64();
+    let d3 = reconnect_delay(3, 0.5).as_secs_f64();
+    let d9 = reconnect_delay(9, 1.0).as_secs_f64();
+    assert!((d0 - 2.0).abs() < 1e-6);
+    assert!((d3 - 16.0).abs() < 1e-6);
+    assert!((45.0..=75.0).contains(&d9));
+}
